@@ -1,0 +1,51 @@
+src/
+├── app/
+│   ├── (auth)/
+│   │   └── login/
+│   │       └── page.tsx                        ✅ done
+│   │
+│   └── dashboard/
+│       │
+│       ├── unit-head/
+│       │   ├── page.tsx                        ✅ done
+│       │   ├── reports/
+│       │   │   ├── page.tsx                    ⬜ full reports list
+│       │   │   └── [id]/
+│       │   │       └── page.tsx                ⬜ view single report
+│       │   └── submit/
+│       │       └── page.tsx                    ⬜ submit report form
+│       │
+│       ├── core-leader/
+│       │   ├── page.tsx                        ⬜ core leader dashboard
+│       │   ├── reports/
+│       │   │   ├── page.tsx                    ⬜ assigned unit reports list
+│       │   │   └── [id]/
+│       │   │       └── page.tsx                ⬜ view + approve report
+│       │   └── units/
+│       │       └── page.tsx                    ⬜ view assigned units
+│       │
+│       └── admin/
+│           ├── page.tsx                        ⬜ admin dashboard
+│           ├── reports/
+│           │   ├── page.tsx                    ⬜ all reports
+│           │   └── [id]/
+│           │       └── page.tsx                ⬜ view any report
+│           ├── users/
+│           │   ├── page.tsx                    ⬜ all users list
+│           │   └── [id]/
+│           │       └── page.tsx                ⬜ edit single user
+│           └── units/
+│               ├── page.tsx                    ⬜ all units list
+│               └── [id]/
+│                   └── page.tsx                ⬜ edit single unit
+│
+├── components/
+│   ├── Sidebar.tsx                             ✅ done
+│   └── Topbar.tsx                              ✅ done
+│
+└── lib/                                        ⬜ later (backend phase)
+    ├── db.ts
+    ├── auth.ts
+    └── graphql/
+        ├── schema.ts
+        └── resolvers.ts
