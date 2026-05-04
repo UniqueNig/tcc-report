@@ -32,12 +32,10 @@ src/
 │           │       └── page.tsx                ⬜ view any report
 │           ├── users/
 │           │   ├── page.tsx                    ⬜ all users list
-│           │   └── [id]/
-│           │       └── page.tsx                ⬜ edit single user
+│           │   
 │           └── units/
 │               ├── page.tsx                    ⬜ all units list
-│               └── [id]/
-│                   └── page.tsx                ⬜ edit single unit
+│                          
 │
 ├── components/
 │   ├── Sidebar.tsx                             
