@@ -1,0 +1,336 @@
+// lib/unitSchemas.ts
+// Centralized field schema for each unit type.
+// Each field has: id, label, type, required, placeholder, options (for select/multiselect)
+// Add new units or fields here — the submit form renders them automatically.
+
+export type FieldType =
+  | "text"
+  | "number"
+  | "textarea"
+  | "select"
+  | "multiselect"
+  | "boolean"
+  | "currency";
+
+export interface UnitField {
+  id: string;
+  label: string;
+  type: FieldType;
+  required: boolean;
+  placeholder?: string;
+  options?: string[]; // for select / multiselect
+  helpText?: string;
+}
+
+export interface UnitSchema {
+  unitName: string;
+  sections: {
+    title: string;
+    fields: UnitField[];
+  }[];
+}
+
+// ── Shared fields (appear in every unit) ──────────────
+const SHARED_FIELDS: UnitField[] = [
+  {
+    id: "serviceTitle",
+    label: "Service / event title",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Sunday Service — May 4, 2026",
+  },
+  {
+    id: "serviceType",
+    label: "Service type",
+    type: "select",
+    required: true,
+    options: ["Sunday Service", "Midweek Service", "Special Event", "Program", "Other"],
+  },
+  {
+    id: "challenges",
+    label: "Challenges",
+    type: "textarea",
+    required: false,
+    placeholder: "Any challenges encountered during the service or event…",
+  },
+  {
+    id: "prayerPoints",
+    label: "Prayer points",
+    type: "textarea",
+    required: false,
+    placeholder: "Key prayer points from your unit…",
+  },
+];
+
+// ── Unit schemas ───────────────────────────────────────
+export const UNIT_SCHEMAS: Record<string, UnitSchema> = {
+
+  "Music Unit": {
+    unitName: "Music Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Music report",
+        fields: [
+          { id: "ministrationTitles", label: "Song / ministration titles", type: "textarea", required: true, placeholder: "List the songs ministered, one per line…" },
+          { id: "choirPresent", label: "Choir members present", type: "number", required: true, placeholder: "e.g. 18" },
+          { id: "choirTotal", label: "Total choir members", type: "number", required: true, placeholder: "e.g. 24" },
+          { id: "rehearsalHeld", label: "Was a rehearsal held before service?", type: "boolean", required: true },
+          { id: "newSongsIntroduced", label: "New songs introduced", type: "number", required: false, placeholder: "0" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Anything noteworthy from the music session…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Ushering Unit": {
+    unitName: "Ushering Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Attendance",
+        fields: [
+          { id: "maleCount", label: "Male adults", type: "number", required: true, placeholder: "e.g. 145" },
+          { id: "femaleCount", label: "Female adults", type: "number", required: true, placeholder: "e.g. 163" },
+          { id: "childrenCount", label: "Children", type: "number", required: true, placeholder: "e.g. 42" },
+          { id: "firstTimers", label: "First timers", type: "number", required: true, placeholder: "e.g. 12" },
+          { id: "ushersOnDuty", label: "Ushers on duty", type: "number", required: true, placeholder: "e.g. 10" },
+        ],
+      },
+      {
+        title: "Offering",
+        fields: [
+          { id: "offeringAmount", label: "Total offering collected (₦)", type: "currency", required: true, placeholder: "e.g. 128500" },
+          { id: "offeringNotes", label: "Offering notes", type: "textarea", required: false, placeholder: "Breakdown or any notes on the offering…" },
+        ],
+      },
+      {
+        title: "Operations",
+        fields: [
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any noteworthy usher moment…" },
+          ...SHARED_FIELDS.slice(2),
+        ],
+      },
+    ],
+  },
+
+  "Media Unit": {
+    unitName: "Media Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Live stream",
+        fields: [
+          { id: "streamPlatforms", label: "Platforms streamed on", type: "multiselect", required: true, options: ["YouTube", "Facebook", "Instagram", "TikTok", "Church App", "Other"] },
+          { id: "onlineViewers", label: "Total online viewers", type: "number", required: true, placeholder: "e.g. 87" },
+          { id: "peakViewers", label: "Peak concurrent viewers", type: "number", required: false, placeholder: "e.g. 45" },
+          { id: "totalLikes", label: "Total likes / reactions", type: "number", required: false, placeholder: "e.g. 210" },
+          { id: "streamQualityIssues", label: "Any stream quality issues?", type: "boolean", required: true },
+          { id: "streamQualityDetails", label: "Quality issue details", type: "textarea", required: false, placeholder: "Describe any technical issues encountered…" },
+        ],
+      },
+      {
+        title: "Recording & content",
+        fields: [
+          { id: "recordingCompleted", label: "Full service recorded?", type: "boolean", required: true },
+          { id: "contentPosted", label: "Content posted post-service?", type: "boolean", required: false },
+          { id: "teamPresent", label: "Media team members present", type: "number", required: true, placeholder: "e.g. 4" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any noteworthy media moment…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Protocol Unit": {
+    unitName: "Protocol Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Protocol report",
+        fields: [
+          { id: "officersOnDuty", label: "Protocol officers on duty", type: "number", required: true, placeholder: "e.g. 6" },
+          { id: "guestsHandled", label: "Guests / dignitaries handled?", type: "boolean", required: true },
+          { id: "guestDetails", label: "Guest details", type: "textarea", required: false, placeholder: "Names, titles, nature of visit…" },
+          { id: "incidentsOccurred", label: "Any incidents?", type: "boolean", required: true },
+          { id: "incidentDetails", label: "Incident details", type: "textarea", required: false, placeholder: "Describe any incidents that occurred…" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any commendable protocol moments…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Technical/Sound Unit": {
+    unitName: "Technical/Sound Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Technical report",
+        fields: [
+          { id: "teamPresent", label: "Technical team members present", type: "number", required: true, placeholder: "e.g. 5" },
+          { id: "soundQuality", label: "Overall sound quality", type: "select", required: true, options: ["Excellent", "Good", "Fair", "Poor"] },
+          { id: "equipmentIssues", label: "Equipment issues encountered?", type: "boolean", required: true },
+          { id: "equipmentDetails", label: "Equipment issue details", type: "textarea", required: false, placeholder: "Describe any equipment faults or failures…" },
+          { id: "projectionWorked", label: "Projection / screens worked throughout?", type: "boolean", required: true },
+          { id: "equipmentNeeded", label: "Equipment needing attention / replacement", type: "textarea", required: false, placeholder: "List any equipment that needs to be fixed or replaced…" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any technical wins this service…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Prayer Unit": {
+    unitName: "Prayer Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Prayer report",
+        fields: [
+          { id: "prayerLeaders", label: "Prayer leaders present", type: "number", required: true, placeholder: "e.g. 8" },
+          { id: "prayerSessionHeld", label: "Pre-service prayer session held?", type: "boolean", required: true },
+          { id: "prayerDuration", label: "Duration of prayer session (minutes)", type: "number", required: false, placeholder: "e.g. 30" },
+          { id: "intercessorsPresent", label: "Intercessors present", type: "number", required: false, placeholder: "e.g. 12" },
+          { id: "prayerThemes", label: "Key prayer themes", type: "textarea", required: true, placeholder: "What did the unit specifically pray about…" },
+          { id: "testimonies", label: "Testimonies / answered prayers", type: "textarea", required: false, placeholder: "Any notable testimonies to report…" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any spiritually significant moments…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Children Unit": {
+    unitName: "Children Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Children's church report",
+        fields: [
+          { id: "teachersPresent", label: "Teachers / workers present", type: "number", required: true, placeholder: "e.g. 7" },
+          { id: "childrenAttended", label: "Children attended", type: "number", required: true, placeholder: "e.g. 45" },
+          { id: "ageGroups", label: "Age groups handled", type: "multiselect", required: false, options: ["Crèche (0–2)", "Toddlers (3–5)", "Primaries (6–9)", "Juniors (10–12)"] },
+          { id: "lessonTitle", label: "Lesson / Bible story title", type: "text", required: true, placeholder: "e.g. David and Goliath" },
+          { id: "lessonSummary", label: "Lesson summary", type: "textarea", required: true, placeholder: "Brief summary of what was taught…" },
+          { id: "activitiesHeld", label: "Activities / crafts held?", type: "boolean", required: false },
+          { id: "newChildren", label: "New children (first timers)", type: "number", required: false, placeholder: "e.g. 3" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any noteworthy children's moment…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Welfare Unit": {
+    unitName: "Welfare Unit",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Welfare report",
+        fields: [
+          { id: "teamPresent", label: "Welfare team members present", type: "number", required: true, placeholder: "e.g. 5" },
+          { id: "membersVisited", label: "Members visited / followed up", type: "number", required: false, placeholder: "e.g. 3" },
+          { id: "needsIdentified", label: "Needs identified", type: "textarea", required: false, placeholder: "Any member needs reported this week…" },
+          { id: "assistanceProvided", label: "Assistance provided", type: "textarea", required: false, placeholder: "What support was given, to whom…" },
+          { id: "hospitalisedMembers", label: "Hospitalised / bereaved members", type: "number", required: false, placeholder: "e.g. 1" },
+          { id: "hospitalisedDetails", label: "Details", type: "textarea", required: false, placeholder: "Names and situations (handle with care)…" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any welfare success story to share…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  "Finance Unit (Accounting)": {
+    unitName: "Finance Unit (Accounting)",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Financial report",
+        fields: [
+          { id: "offeringReceived", label: "Total offering received from ushers (₦)", type: "currency", required: true, placeholder: "e.g. 128500" },
+          { id: "offeringBanked", label: "Amount banked (₦)", type: "currency", required: true, placeholder: "e.g. 128500" },
+          { id: "bankingDate", label: "Banking date", type: "text", required: false, placeholder: "e.g. May 5, 2026" },
+          { id: "discrepancies", label: "Any discrepancies?", type: "boolean", required: true },
+          { id: "discrepancyDetails", label: "Discrepancy details", type: "textarea", required: false, placeholder: "Explain any difference between collected and banked amounts…" },
+          { id: "titheReceived", label: "Tithes received (₦)", type: "currency", required: false, placeholder: "e.g. 45000" },
+          { id: "specialSeedReceived", label: "Special seeds / donations (₦)", type: "currency", required: false, placeholder: "e.g. 20000" },
+          { id: "expenditure", label: "Expenditure this week (₦)", type: "currency", required: false, placeholder: "e.g. 15000" },
+          { id: "expenditureNotes", label: "Expenditure notes", type: "textarea", required: false, placeholder: "What was the expenditure for…" },
+          { id: "highlights", label: "Notes / highlights", type: "textarea", required: false, placeholder: "Any financial observations or notes…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+
+  // ── Family Heads ──────────────────────────────────────
+  "Family Head - Goshen": {
+    unitName: "Family Head - Goshen",
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "Family group report",
+        fields: [
+          { id: "membersPresent", label: "Members present", type: "number", required: true, placeholder: "e.g. 22" },
+          { id: "totalMembers", label: "Total registered members", type: "number", required: true, placeholder: "e.g. 30" },
+          { id: "newMembers", label: "New members added", type: "number", required: false, placeholder: "0" },
+          { id: "absentMembers", label: "Absent members", type: "number", required: false, placeholder: "0" },
+          { id: "followUpDone", label: "Follow-up done on absentees?", type: "boolean", required: false },
+          { id: "cellMeetingHeld", label: "Cell / family meeting held this week?", type: "boolean", required: false },
+          { id: "cellMeetingNotes", label: "Cell meeting notes", type: "textarea", required: false, placeholder: "What was discussed or studied…" },
+          { id: "highlights", label: "Highlights", type: "textarea", required: false, placeholder: "Any testimonies, prayer answers, milestones…" },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  },
+};
+
+// Clone family head schema for other family groups
+["David", "Joseph", "Issachar", "Judah"].forEach((name) => {
+  UNIT_SCHEMAS[`Family Head - ${name}`] = {
+    ...UNIT_SCHEMAS["Family Head - Goshen"],
+    unitName: `Family Head - ${name}`,
+  };
+});
+
+// ── Helper: get schema by unit name ───────────────────
+export function getUnitSchema(unitName: string): UnitSchema | null {
+  return UNIT_SCHEMAS[unitName] ?? null;
+}
+
+// ── Helper: get all unit names ─────────────────────────
+export const ALL_UNIT_NAMES = Object.keys(UNIT_SCHEMAS);
