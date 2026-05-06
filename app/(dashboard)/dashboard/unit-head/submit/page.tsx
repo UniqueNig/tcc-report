@@ -243,7 +243,7 @@ export default function SubmitReportPage() {
   const me = data?.me ?? null;
   const sidebarUser = toSidebarUser(me);
   const unitName = me?.unit?.name ?? "";
-  const schema = getUnitSchema(unitName);
+  const schema = getUnitSchema(unitName, me?.unit?.formSchema);
   const formUnavailableTitle = meError
     ? "Could not load report form"
     : !me

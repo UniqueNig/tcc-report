@@ -1,87 +1,60 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  Menu, Sun, Moon, Bell, FileText,
-  CheckCircle2, MessageSquare, X, Check,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
+import { useQuery } from "@apollo/client/react";
+import { useRouter } from "next/navigation";
+import {
+  Bell,
+  Check,
+  CheckCircle2,
+  FileText,
+  Loader2,
+  Menu,
+  MessageSquare,
+  Moon,
+  Sun,
+  X,
 } from "lucide-react";
 import type { SidebarUser } from "@/src/components/Sidebar";
+import { TOPBAR_NOTIFICATIONS_QUERY } from "@/src/lib/graphqlDocuments";
+import type { GraphQLReport, GraphQLUser } from "@/src/lib/dashboardHelpers";
 
-// ── Types ──────────────────────────────────────────────
 type NotificationType = "report_submitted" | "report_reviewed" | "comment_added";
 
-interface Notification {
+interface TopbarNotification {
   id: string;
   type: NotificationType;
   title: string;
   body: string;
-  time: string;
+  timestamp: string;
   read: boolean;
   href: string;
 }
 
-// ── Mock notifications (replace with real API / websocket) ─
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: "n1", type: "report_submitted", read: false,
-    title: "New report submitted",
-    body: "Adeola Obi submitted a report for Music Unit.",
-    time: "2 min ago", href: "/dashboard/core-leader/reports/1",
-  },
-  {
-    id: "n2", type: "comment_added", read: false,
-    title: "Comment on your report",
-    body: "Br. Oluwole left feedback on Sunday Service — May 4.",
-    time: "18 min ago", href: "/dashboard/unit-head/reports/1",
-  },
-  {
-    id: "n3", type: "report_submitted", read: false,
-    title: "New report submitted",
-    body: "Tunde Fadeyi submitted a report for Ushering Unit.",
-    time: "1 hr ago", href: "/dashboard/core-leader/reports/3",
-  },
-  {
-    id: "n4", type: "report_reviewed", read: true,
-    title: "Report reviewed",
-    body: "Br. Oluwole marked Midweek — Apr 30 as reviewed.",
-    time: "3 hrs ago", href: "/dashboard/unit-head/reports/4",
-  },
-  {
-    id: "n5", type: "comment_added", read: true,
-    title: "Comment on your report",
-    body: "Pastor Adewale left a note on Good Friday Service.",
-    time: "Yesterday", href: "/dashboard/unit-head/reports/8",
-  },
-];
-
-// ── Notification icon per type ─────────────────────────
-function NotifIcon({ type }: { type: NotificationType }) {
-  if (type === "report_submitted") return (
-    <div className="w-8 h-8 rounded-xl bg-stone-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
-      <FileText size={14} className="text-stone-500 dark:text-neutral-400" />
-    </div>
-  );
-  if (type === "report_reviewed") return (
-    <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center shrink-0">
-      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
-    </div>
-  );
-  return (
-    <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center shrink-0">
-      <MessageSquare size={14} className="text-amber-600 dark:text-amber-400" />
-    </div>
-  );
-}
-
-// ── Props ──────────────────────────────────────────────
 interface TopbarProps {
   onMenuClick: () => void;
   user: Pick<SidebarUser, "name">;
-  notificationCount?: number; // kept for API compat — unread count now derived internally
+  notificationCount?: number;
 }
 
+const READ_STORAGE_KEY = "tcc-report:read-notifications";
+const DISMISSED_STORAGE_KEY = "tcc-report:dismissed-notifications";
+
 function getInitials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 function subscribeTheme(onStoreChange: () => void) {
@@ -106,35 +79,184 @@ function getServerThemeSnapshot() {
   return false;
 }
 
-// ── Component ──────────────────────────────────────────
-export default function Topbar({ onMenuClick, user }: TopbarProps) {
-  const isDark = useSyncExternalStore(
-    subscribeTheme,
-    getThemeSnapshot,
-    getServerThemeSnapshot
+function readStoredIds(key: string) {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistStoredIds(key: string, ids: string[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, JSON.stringify(ids.slice(-200)));
+}
+
+function getReportHref(role: GraphQLUser["role"], reportId: string) {
+  if (role === "ADMIN") return `/dashboard/admin/reports/${reportId}`;
+  if (role === "CORE_LEADER") return `/dashboard/core-leader/reports/${reportId}`;
+  return `/dashboard/unit-head/reports/${reportId}`;
+}
+
+function formatRelativeTime(iso: string) {
+  const timestamp = new Date(iso).getTime();
+  if (Number.isNaN(timestamp)) return "";
+
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (diffSeconds < 60) return "Just now";
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hr ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function buildNotifications(
+  me: GraphQLUser | null | undefined,
+  reports: GraphQLReport[],
+  readIds: Set<string>,
+  dismissedIds: Set<string>
+): TopbarNotification[] {
+  if (!me) return [];
+
+  const notifications: TopbarNotification[] = [];
+
+  for (const report of reports) {
+    const href = getReportHref(me.role, report.id);
+
+    if ((me.role === "ADMIN" || me.role === "CORE_LEADER") && report.status === "pending") {
+      const id = `report-submitted:${report.id}`;
+      notifications.push({
+        id,
+        type: "report_submitted",
+        title: "Report awaiting review",
+        body: `${report.submittedByUser?.name ?? "A unit head"} submitted ${report.title} for ${report.unit?.name ?? "a unit"}.`,
+        timestamp: report.createdAt,
+        read: readIds.has(id),
+        href,
+      });
+    }
+
+    if (me.role === "UNIT_HEAD" && report.reviewedAt) {
+      const id = `report-reviewed:${report.id}:${report.reviewedAt}`;
+      notifications.push({
+        id,
+        type: "report_reviewed",
+        title: "Report reviewed",
+        body: `${report.reviewedByUser?.name ?? "A leader"} reviewed ${report.title}.`,
+        timestamp: report.reviewedAt,
+        read: readIds.has(id),
+        href,
+      });
+    }
+
+    if (me.role === "UNIT_HEAD") {
+      for (const comment of report.comments ?? []) {
+        const id = `comment:${comment.id}`;
+        notifications.push({
+          id,
+          type: "comment_added",
+          title: "New comment",
+          body: `${comment.authorUser?.name ?? "A leader"} commented on ${report.title}.`,
+          timestamp: comment.createdAt,
+          read: readIds.has(id),
+          href,
+        });
+      }
+    }
+  }
+
+  return notifications
+    .filter((notification) => !dismissedIds.has(notification.id))
+    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+    .slice(0, 12);
+}
+
+function NotifIcon({ type }: { type: NotificationType }) {
+  if (type === "report_reviewed") {
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/50">
+        <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
+      </div>
+    );
+  }
+
+  if (type === "comment_added") {
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/50">
+        <MessageSquare size={14} className="text-amber-600 dark:text-amber-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
+      <FileText size={14} className="text-stone-500 dark:text-neutral-400" />
+    </div>
   );
+}
+
+export default function Topbar({ onMenuClick, user }: TopbarProps) {
+  const router = useRouter();
+  const isDark = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getServerThemeSnapshot);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
+  const [readIds, setReadIds] = useState<string[]>(() => readStoredIds(READ_STORAGE_KEY));
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() =>
+    readStoredIds(DISMISSED_STORAGE_KEY)
+  );
   const dropdownRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const { data, loading } = useQuery<{
+    me: GraphQLUser | null;
+    reports: GraphQLReport[];
+  }>(TOPBAR_NOTIFICATIONS_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
 
-  // Close dropdown on outside click
+  const readIdSet = useMemo(() => new Set(readIds), [readIds]);
+  const dismissedIdSet = useMemo(() => new Set(dismissedIds), [dismissedIds]);
+  const notifications = useMemo(
+    () => buildNotifications(data?.me, data?.reports ?? [], readIdSet, dismissedIdSet),
+    [data?.me, data?.reports, dismissedIdSet, readIdSet]
+  );
+
+  const unreadCount = notifications.filter((notification) => !notification.read).length;
+
   useEffect(() => {
-    function handle(e: MouseEvent) {
+    function handle(event: globalThis.MouseEvent) {
       if (
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
-        bellRef.current && !bellRef.current.contains(e.target as Node)
-      ) setNotifOpen(false);
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        bellRef.current &&
+        !bellRef.current.contains(event.target as Node)
+      ) {
+        setNotifOpen(false);
+      }
     }
+
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  // Close on Escape
   useEffect(() => {
-    function handle(e: KeyboardEvent) { if (e.key === "Escape") setNotifOpen(false); }
+    function handle(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setNotifOpen(false);
+    }
+
     document.addEventListener("keydown", handle);
     return () => document.removeEventListener("keydown", handle);
   }, []);
@@ -145,135 +267,189 @@ export default function Topbar({ onMenuClick, user }: TopbarProps) {
     localStorage.setItem("theme", next ? "dark" : "light");
   }
 
+  function storeReadIds(ids: string[]) {
+    const next = Array.from(new Set(ids));
+    setReadIds(next);
+    persistStoredIds(READ_STORAGE_KEY, next);
+  }
+
+  function storeDismissedIds(ids: string[]) {
+    const next = Array.from(new Set(ids));
+    setDismissedIds(next);
+    persistStoredIds(DISMISSED_STORAGE_KEY, next);
+  }
+
   function markAsRead(id: string) {
-    setNotifications((p) => p.map((n) => n.id === id ? { ...n, read: true } : n));
+    storeReadIds([...readIds, id]);
   }
 
   function markAllRead() {
-    setNotifications((p) => p.map((n) => ({ ...n, read: true })));
+    storeReadIds([...readIds, ...notifications.map((notification) => notification.id)]);
   }
 
-  function dismiss(id: string, e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setNotifications((p) => p.filter((n) => n.id !== id));
+  function dismiss(id: string, event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    storeDismissedIds([...dismissedIds, id]);
   }
 
-  function handleNotifClick(notif: Notification) {
-    markAsRead(notif.id);
+  function clearAllNotifications() {
+    storeDismissedIds([...dismissedIds, ...notifications.map((notification) => notification.id)]);
     setNotifOpen(false);
-    // router.push(notif.href) — wire with useRouter when ready
+  }
+
+  function handleNotificationClick(notification: TopbarNotification) {
+    markAsRead(notification.id);
+    setNotifOpen(false);
+    router.push(notification.href);
+  }
+
+  function handleNotificationKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+    notification: TopbarNotification
+  ) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleNotificationClick(notification);
+    }
   }
 
   return (
-    <header className="h-12 shrink-0 bg-white dark:bg-neutral-900 border-b border-stone-200 dark:border-neutral-800 flex items-center justify-between px-4 lg:px-6 relative z-10">
-
-      {/* Left — hamburger (mobile only) */}
-      <button onClick={onMenuClick}
-        className="lg:hidden text-stone-500 hover:text-stone-700 dark:text-neutral-400 dark:hover:text-white transition-colors"
-        aria-label="Open menu">
+    <header className="relative z-10 flex h-12 shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-900 lg:px-6">
+      <button
+        onClick={onMenuClick}
+        className="text-stone-500 transition-colors hover:text-stone-700 dark:text-neutral-400 dark:hover:text-white lg:hidden"
+        aria-label="Open menu"
+      >
         <Menu size={18} />
       </button>
       <div className="hidden lg:block" />
 
-      {/* Right */}
       <div className="flex items-center gap-1">
-
-        {/* Theme toggle */}
-        <button onClick={toggleTheme}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 dark:text-neutral-500 hover:bg-stone-100 dark:hover:bg-neutral-800 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors"
-          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+        <button
+          onClick={toggleTheme}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        >
           {isDark ? <Sun size={15} /> : <Moon size={15} />}
         </button>
 
-        {/* Bell */}
         <div className="relative">
-          <button ref={bellRef} onClick={() => setNotifOpen((o) => !o)}
-            className="relative w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 dark:text-neutral-500 hover:bg-stone-100 dark:hover:bg-neutral-800 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors"
-            aria-label="Notifications">
+          <button
+            ref={bellRef}
+            onClick={() => setNotifOpen((open) => !open)}
+            className="relative flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            aria-label="Notifications"
+          >
             <Bell size={15} />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none">
+              <span className="absolute right-1 top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold leading-none text-white">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
           </button>
 
-          {/* Dropdown */}
           {notifOpen && (
-            <div ref={dropdownRef}
-              className="absolute right-0 top-[calc(100%+8px)] w-80 bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl shadow-xl shadow-black/8 dark:shadow-black/40 overflow-hidden fade-up">
-
-              {/* Dropdown header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 dark:border-neutral-800">
+            <div
+              ref={dropdownRef}
+              className="fade-up absolute right-0 top-[calc(100%+8px)] w-80 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl shadow-black/10 dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-black/40"
+            >
+              <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3 dark:border-neutral-800">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-stone-900 dark:text-white">Notifications</span>
+                  <span className="text-sm font-semibold text-stone-900 dark:text-white">
+                    Notifications
+                  </span>
                   {unreadCount > 0 && (
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400">
+                    <span className="inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
                       {unreadCount} new
                     </span>
                   )}
                 </div>
                 {unreadCount > 0 && (
-                  <button onClick={markAllRead}
-                    className="inline-flex items-center gap-1 text-xs text-stone-400 dark:text-neutral-500 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors">
-                    <Check size={11} />Mark all read
+                  <button
+                    onClick={markAllRead}
+                    className="inline-flex items-center gap-1 text-xs text-stone-400 transition-colors hover:text-stone-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+                  >
+                    <Check size={11} />
+                    Mark all read
                   </button>
                 )}
               </div>
 
-              {/* Notification list */}
               <div className="max-h-80 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                    <div className="w-10 h-10 rounded-full bg-stone-100 dark:bg-neutral-800 flex items-center justify-center mb-3">
+                {loading && notifications.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-stone-500 dark:text-neutral-400">
+                    <Loader2 size={15} className="animate-spin" />
+                    Loading notifications...
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 dark:bg-neutral-800">
                       <Bell size={16} className="text-stone-400 dark:text-neutral-500" />
                     </div>
-                    <p className="text-sm font-medium text-stone-600 dark:text-neutral-400">All caught up!</p>
-                    <p className="text-xs text-stone-400 dark:text-neutral-500 mt-1">No notifications right now</p>
+                    <p className="text-sm font-medium text-stone-600 dark:text-neutral-400">
+                      All caught up
+                    </p>
+                    <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
+                      No report notifications right now
+                    </p>
                   </div>
-                ) : notifications.map((notif) => (
-                  <div key={notif.id} onClick={() => handleNotifClick(notif)}
-                    className={`group relative flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-stone-50 dark:border-neutral-800/60 last:border-none
-                      ${notif.read
-                        ? "hover:bg-stone-50 dark:hover:bg-neutral-800/40"
-                        : "bg-amber-50/50 dark:bg-amber-950/10 hover:bg-amber-50 dark:hover:bg-amber-950/20"
-                      }`}>
+                ) : (
+                  notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleNotificationClick(notification)}
+                      onKeyDown={(event) => handleNotificationKeyDown(event, notification)}
+                      className={`group relative flex cursor-pointer items-start gap-3 border-b border-stone-50 px-4 py-3.5 transition-colors last:border-none dark:border-neutral-800/60 ${
+                        notification.read
+                          ? "hover:bg-stone-50 dark:hover:bg-neutral-800/40"
+                          : "bg-amber-50/50 hover:bg-amber-50 dark:bg-amber-950/10 dark:hover:bg-amber-950/20"
+                      }`}
+                    >
+                      {!notification.read && (
+                        <div className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-amber-500" />
+                      )}
 
-                    {/* Unread indicator */}
-                    {!notif.read && (
-                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                    )}
+                      <NotifIcon type={notification.type} />
 
-                    <NotifIcon type={notif.type} />
+                      <div className="min-w-0 flex-1 pr-5">
+                        <p
+                          className={`mb-0.5 text-xs font-semibold leading-snug ${
+                            notification.read
+                              ? "text-stone-700 dark:text-neutral-300"
+                              : "text-stone-900 dark:text-white"
+                          }`}
+                        >
+                          {notification.title}
+                        </p>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-neutral-400">
+                          {notification.body}
+                        </p>
+                        <p className="mt-1.5 text-[10px] font-medium text-stone-400 dark:text-neutral-500">
+                          {formatRelativeTime(notification.timestamp)}
+                        </p>
+                      </div>
 
-                    <div className="flex-1 min-w-0 pr-5">
-                      <p className={`text-xs font-semibold leading-snug mb-0.5
-                        ${notif.read ? "text-stone-700 dark:text-neutral-300" : "text-stone-900 dark:text-white"}`}>
-                        {notif.title}
-                      </p>
-                      <p className="text-xs text-stone-500 dark:text-neutral-400 leading-relaxed line-clamp-2">
-                        {notif.body}
-                      </p>
-                      <p className="text-[10px] text-stone-400 dark:text-neutral-500 mt-1.5 font-medium">
-                        {notif.time}
-                      </p>
+                      <button
+                        onClick={(event) => dismiss(notification.id, event)}
+                        className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-md text-stone-400 opacity-0 transition-all hover:bg-stone-200 hover:text-stone-600 group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
+                        aria-label="Dismiss notification"
+                      >
+                        <X size={11} />
+                      </button>
                     </div>
-
-                    {/* Dismiss button — appears on hover */}
-                    <button onClick={(e) => dismiss(notif.id, e)}
-                      className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-stone-400 dark:text-neutral-500 hover:bg-stone-200 dark:hover:bg-neutral-700 hover:text-stone-600 dark:hover:text-neutral-300 transition-all">
-                      <X size={11} />
-                    </button>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
 
-              {/* Footer */}
               {notifications.length > 0 && (
-                <div className="px-4 py-3 border-t border-stone-100 dark:border-neutral-800">
-                  <button onClick={() => { setNotifications([]); setNotifOpen(false); }}
-                    className="w-full text-xs text-center text-stone-400 dark:text-neutral-500 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors">
+                <div className="border-t border-stone-100 px-4 py-3 dark:border-neutral-800">
+                  <button
+                    onClick={clearAllNotifications}
+                    className="w-full text-center text-xs text-stone-400 transition-colors hover:text-stone-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+                  >
                     Clear all notifications
                   </button>
                 </div>
@@ -282,11 +458,12 @@ export default function Topbar({ onMenuClick, user }: TopbarProps) {
           )}
         </div>
 
-        {/* Divider */}
-        <div className="w-px h-4 bg-stone-200 dark:bg-neutral-700 mx-1" />
+        <div className="mx-1 h-4 w-px bg-stone-200 dark:bg-neutral-700" />
 
-        {/* Avatar */}
-        <div className="w-7 h-7 rounded-full bg-stone-200 dark:bg-neutral-700 flex items-center justify-center text-xs font-semibold text-stone-700 dark:text-stone-300 select-none" title={user.name}>
+        <div
+          className="flex h-7 w-7 select-none items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-700 dark:bg-neutral-700 dark:text-stone-300"
+          title={user.name}
+        >
           {getInitials(user.name)}
         </div>
       </div>

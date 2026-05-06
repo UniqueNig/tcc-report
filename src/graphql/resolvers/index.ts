@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import type { GraphQLContext } from "@/src/graphql/context";
 import { Comment, type IComment } from "@/src/models/Comment";
 import { Report, type IReport, type IReportSection } from "@/src/models/Report";
-import { Unit, type IUnit } from "@/src/models/Unit";
+import { Unit, type IUnit, type IUnitFormSchema } from "@/src/models/Unit";
 import { User, type IUser } from "@/src/models/User";
 import type { JWTPayload, UserRole } from "@/src/lib/auth";
 
@@ -33,6 +33,7 @@ type CreateUnitInput = {
   name: string;
   coreLeaderId: string;
   headId?: string | null;
+  formSchema?: IUnitFormSchema | null;
 };
 
 type UpdateUnitInput = Partial<CreateUnitInput>;
@@ -165,6 +166,40 @@ function normalizeStatus(status?: string | null) {
   }
 
   return normalized;
+}
+
+function normalizeUnitFormSchema(
+  formSchema: IUnitFormSchema | null | undefined,
+  unitName: string
+): IUnitFormSchema | undefined {
+  if (!formSchema) return undefined;
+
+  const sections = formSchema.sections
+    .map((section) => ({
+      title: section.title.trim(),
+      fields: section.fields
+        .map((field) => ({
+          id: field.id.trim(),
+          label: field.label.trim(),
+          type: field.type,
+          required: Boolean(field.required),
+          placeholder: field.placeholder?.trim() || undefined,
+          options:
+            field.options
+              ?.map((option) => option.trim())
+              .filter(Boolean) ?? undefined,
+          helpText: field.helpText?.trim() || undefined,
+        }))
+        .filter((field) => field.id && field.label),
+    }))
+    .filter((section) => section.title && section.fields.length > 0);
+
+  if (sections.length === 0) return undefined;
+
+  return {
+    unitName: formSchema.unitName?.trim() || unitName,
+    sections,
+  };
 }
 
 function dateString(value?: Date | null): string | null {
@@ -407,6 +442,7 @@ export const resolvers = {
       const unit = await Unit.create({
         name: args.input.name.trim(),
         coreLeaderId: coreLeader._id,
+        formSchema: normalizeUnitFormSchema(args.input.formSchema, args.input.name.trim()),
       });
 
       await assignUnitHead(toId(unit._id), args.input.headId);
@@ -427,6 +463,9 @@ export const resolvers = {
       }
 
       if (args.input.name !== undefined) unit.name = args.input.name.trim();
+      if (args.input.formSchema !== undefined) {
+        unit.formSchema = normalizeUnitFormSchema(args.input.formSchema, unit.name);
+      }
       if (args.input.coreLeaderId !== undefined) {
         const coreLeader = await User.findById(toObjectId(args.input.coreLeaderId)).exec();
         if (!coreLeader || coreLeader.role !== "CORE_LEADER") {
@@ -558,6 +597,7 @@ export const resolvers = {
     coreLeaderId: (unit: IUnit) => toId(unit.coreLeaderId),
     coreLeader: (unit: IUnit) => User.findById(unit.coreLeaderId).exec(),
     unitHead: (unit: IUnit) => User.findOne({ role: "UNIT_HEAD", unitId: unit._id }).exec(),
+    formSchema: (unit: IUnit) => unit.formSchema ?? null,
     reportCount: (unit: IUnit) => Report.countDocuments({ unitId: unit._id }).exec(),
     pendingCount: (unit: IUnit) =>
       Report.countDocuments({ unitId: unit._id, status: "pending" }).exec(),

@@ -2,6 +2,24 @@
 
 import { gql } from "@apollo/client";
 
+export const UNIT_FORM_SCHEMA_FRAGMENT = gql`
+  fragment UnitFormSchemaParts on UnitFormSchema {
+    unitName
+    sections {
+      title
+      fields {
+        id
+        label
+        type
+        required
+        placeholder
+        options
+        helpText
+      }
+    }
+  }
+`;
+
 export const REPORT_LIST_ITEM_FRAGMENT = gql`
   fragment ReportListItem on Report {
     id
@@ -28,6 +46,9 @@ export const REPORT_LIST_ITEM_FRAGMENT = gql`
       }
       reportCount
       pendingCount
+      formSchema {
+        ...UnitFormSchemaParts
+      }
     }
     submittedByUser {
       id
@@ -51,6 +72,7 @@ export const REPORT_LIST_ITEM_FRAGMENT = gql`
       }
     }
   }
+  ${UNIT_FORM_SCHEMA_FRAGMENT}
 `;
 
 export const REPORT_DETAIL_FRAGMENT = gql`
@@ -92,11 +114,15 @@ export const ME_QUERY = gql`
         }
         reportCount
         pendingCount
+        formSchema {
+          ...UnitFormSchemaParts
+        }
       }
       createdAt
       updatedAt
     }
   }
+  ${UNIT_FORM_SCHEMA_FRAGMENT}
 `;
 
 export const ADMIN_DASHBOARD_QUERY = gql`
@@ -141,6 +167,9 @@ export const ADMIN_DASHBOARD_QUERY = gql`
       }
       reportCount
       pendingCount
+      formSchema {
+        ...UnitFormSchemaParts
+      }
       createdAt
       updatedAt
     }
@@ -180,6 +209,9 @@ export const CORE_LEADER_DASHBOARD_QUERY = gql`
       }
       reportCount
       pendingCount
+      formSchema {
+        ...UnitFormSchemaParts
+      }
       createdAt
       updatedAt
     }
@@ -273,6 +305,9 @@ export const UNITS_PAGE_QUERY = gql`
       }
       reportCount
       pendingCount
+      formSchema {
+        ...UnitFormSchemaParts
+      }
       createdAt
       updatedAt
     }
@@ -294,6 +329,7 @@ export const UNITS_PAGE_QUERY = gql`
       }
     }
   }
+  ${UNIT_FORM_SCHEMA_FRAGMENT}
 `;
 
 export const REPORTS_PAGE_QUERY = gql`
@@ -316,6 +352,22 @@ export const REPORTS_PAGE_QUERY = gql`
       pendingCount
     }
     reports(status: $status, unitId: $unitId, mine: $mine) {
+      ...ReportListItem
+    }
+  }
+  ${REPORT_LIST_ITEM_FRAGMENT}
+`;
+
+export const TOPBAR_NOTIFICATIONS_QUERY = gql`
+  query TopbarNotifications {
+    me {
+      id
+      name
+      email
+      role
+      unitId
+    }
+    reports {
       ...ReportListItem
     }
   }
@@ -438,10 +490,14 @@ export const CREATE_UNIT_MUTATION = gql`
       }
       reportCount
       pendingCount
+      formSchema {
+        ...UnitFormSchemaParts
+      }
       createdAt
       updatedAt
     }
   }
+  ${UNIT_FORM_SCHEMA_FRAGMENT}
 `;
 
 export const UPDATE_UNIT_MUTATION = gql`
@@ -462,10 +518,14 @@ export const UPDATE_UNIT_MUTATION = gql`
       }
       reportCount
       pendingCount
+      formSchema {
+        ...UnitFormSchemaParts
+      }
       createdAt
       updatedAt
     }
   }
+  ${UNIT_FORM_SCHEMA_FRAGMENT}
 `;
 
 export const DELETE_UNIT_MUTATION = gql`

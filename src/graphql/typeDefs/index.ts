@@ -36,10 +36,31 @@ export const typeDefs = gql`
     coreLeaderId: ID!
     coreLeader: User
     unitHead: User
+    formSchema: UnitFormSchema
     reportCount: Int!
     pendingCount: Int!
     createdAt: String!
     updatedAt: String!
+  }
+
+  type UnitFormField {
+    id: String!
+    label: String!
+    type: FieldType!
+    required: Boolean!
+    placeholder: String
+    options: [String!]
+    helpText: String
+  }
+
+  type UnitFormSection {
+    title: String!
+    fields: [UnitFormField!]!
+  }
+
+  type UnitFormSchema {
+    unitName: String!
+    sections: [UnitFormSection!]!
   }
 
   type ReportField {
@@ -105,12 +126,34 @@ export const typeDefs = gql`
     name: String!
     coreLeaderId: ID!
     headId: ID
+    formSchema: UnitFormSchemaInput
   }
 
   input UpdateUnitInput {
     name: String
     coreLeaderId: ID
     headId: ID
+    formSchema: UnitFormSchemaInput
+  }
+
+  input UnitFormFieldInput {
+    id: String!
+    label: String!
+    type: FieldType!
+    required: Boolean!
+    placeholder: String
+    options: [String!]
+    helpText: String
+  }
+
+  input UnitFormSectionInput {
+    title: String!
+    fields: [UnitFormFieldInput!]!
+  }
+
+  input UnitFormSchemaInput {
+    unitName: String!
+    sections: [UnitFormSectionInput!]!
   }
 
   input ReportFieldInput {

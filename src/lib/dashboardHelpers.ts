@@ -1,6 +1,7 @@
 "use client";
 
 import type { SidebarUser } from "@/src/components/Sidebar";
+import type { UnitSchema } from "@/src/lib/unitSchemas";
 
 export type ReportStatus = "pending" | "reviewed";
 export type FieldType =
@@ -40,6 +41,7 @@ export interface GraphQLUnit {
   id: string;
   name: string;
   coreLeaderId?: string;
+  formSchema?: UnitSchema | null;
   coreLeader?: {
     id: string;
     name: string;
