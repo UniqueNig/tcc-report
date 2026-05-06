@@ -1,34 +1,37 @@
-import mongoose from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
+import type { UserRole } from "@/src/lib/auth";
 
-const userSchema = new mongoose.Schema(
+export interface IUser extends Document {
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: UserRole;
+  unitId?: mongoose.Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const UserSchema = new Schema<IUser>(
   {
-    name: {
-      type: String,
-      required: true,
-    },
+    name: { type: String, required: true, trim: true },
     email: {
-      type: String,
-      required: true,
-      unique: true,
+      type: String, required: true, unique: true,
+      lowercase: true, trim: true,
     },
-    password: {
-      type: String,
-      required: true,
-    },
+    passwordHash: { type: String, required: true },
     role: {
       type: String,
       enum: ["UNIT_HEAD", "CORE_LEADER", "ADMIN"],
+      required: true,
     },
     unitId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "units",
+      type: Schema.Types.ObjectId,
+      ref: "Unit",
+      required: false,
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
-// export default mongoose.model("User", userSchema);
-const userModel =
-  mongoose.models["users"] || mongoose.model("users", userSchema);
-export default userModel;
-
+// Prevent model re-compilation in Next.js hot reload
+export const User = mongoose.models.User ?? mongoose.model<IUser>("User", UserSchema);

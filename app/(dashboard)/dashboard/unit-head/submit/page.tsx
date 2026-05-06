@@ -1,28 +1,38 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import {
-  ArrowLeft, Building2, Calendar, Paperclip,
-  X, CheckCircle2, AlertCircle, Loader2, Upload, FileText,
+  AlertCircle,
+  ArrowLeft,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  FileText,
+  Loader2,
+  Paperclip,
+  Upload,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import { CREATE_REPORT_MUTATION, ME_QUERY } from "@/src/lib/graphqlDocuments";
+import {
+  toSidebarUser,
+  type GraphQLUser,
+  type FieldType,
+} from "@/src/lib/dashboardHelpers";
 import { getUnitSchema, type UnitField } from "@/src/lib/unitSchemas";
 
-// ── Mock session (replace with real session) ───────────
-const MOCK_USER = {
-  name: "Adeola Obi",
-  unit: "Finance Unit (Accounting)",
-  role: "UNIT_HEAD" as const,
-};
-
 type FieldValue = string | number | boolean | string[];
-type FormValues = Record<string, FieldValue>;
+type FormValues = Record<string, FieldValue | "">;
 type FormErrors = Record<string, string>;
 
 const ALLOWED_TYPES = [
-  "application/pdf", "image/jpeg", "image/png",
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
@@ -36,91 +46,171 @@ function formatFileSize(bytes: number) {
 
 function today() {
   return new Date().toLocaleDateString("en-GB", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 }
 
-// ── Field renderer ─────────────────────────────────────
+async function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function normalizeFieldValue(field: UnitField, value: FieldValue | ""): FieldValue {
+  if (field.type === "multiselect") {
+    return Array.isArray(value) ? value : [];
+  }
+
+  if (field.type === "boolean") {
+    return value === true;
+  }
+
+  if (field.type === "number" || field.type === "currency") {
+    return typeof value === "number" ? value : 0;
+  }
+
+  return typeof value === "string" ? value : "";
+}
+
 function FieldRenderer({
-  field, value, error, onChange,
+  field,
+  value,
+  error,
+  onChange,
 }: {
-  field: UnitField; value: FieldValue; error?: string;
-  onChange: (id: string, val: FieldValue) => void;
+  field: UnitField;
+  value: FieldValue | "";
+  error?: string;
+  onChange: (id: string, value: FieldValue | "") => void;
 }) {
-  const base = `w-full px-3.5 py-2.5 text-sm rounded-xl border outline-none transition-colors
-    bg-stone-50 dark:bg-neutral-800 text-stone-900 dark:text-white
-    placeholder-stone-400 dark:placeholder-neutral-500
-    ${error ? "border-red-400 dark:border-red-700" : "border-stone-200 dark:border-neutral-700 focus:border-stone-400 dark:focus:border-neutral-500"}`;
+  const baseClassName = `w-full rounded-xl border bg-stone-50 px-3.5 py-2.5 text-sm text-stone-900 outline-none transition-colors placeholder:text-stone-400 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500 ${
+    error
+      ? "border-red-400 dark:border-red-700"
+      : "border-stone-200 focus:border-stone-400 dark:border-neutral-700 dark:focus:border-neutral-500"
+  }`;
 
   if (field.type === "text" || field.type === "number" || field.type === "currency") {
     return (
       <input
         type={field.type === "text" ? "text" : "number"}
-        value={value as string}
-        onChange={(e) => onChange(field.id, field.type === "text" ? e.target.value : parseFloat(e.target.value) || "")}
+        value={typeof value === "number" ? value : String(value)}
+        onChange={(event) =>
+          onChange(
+            field.id,
+            field.type === "text" ? event.target.value : Number(event.target.value) || ""
+          )
+        }
         placeholder={field.placeholder}
-        min={field.type !== "text" ? 0 : undefined}
-        className={base}
+        min={field.type === "text" ? undefined : 0}
+        className={baseClassName}
       />
     );
   }
 
   if (field.type === "textarea") {
     return (
-      <textarea value={value as string} onChange={(e) => onChange(field.id, e.target.value)}
-        placeholder={field.placeholder} rows={4}
-        className={`${base} resize-none leading-relaxed`} />
+      <textarea
+        value={typeof value === "string" ? value : ""}
+        onChange={(event) => onChange(field.id, event.target.value)}
+        placeholder={field.placeholder}
+        rows={4}
+        className={`${baseClassName} resize-none leading-relaxed`}
+      />
     );
   }
 
   if (field.type === "select") {
     return (
-      <select value={value as string} onChange={(e) => onChange(field.id, e.target.value)}
-        className={`${base} cursor-pointer appearance-none`}>
+      <select
+        value={typeof value === "string" ? value : ""}
+        onChange={(event) => onChange(field.id, event.target.value)}
+        className={`${baseClassName} cursor-pointer appearance-none`}
+      >
         <option value="">Select an option</option>
-        {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        {field.options?.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
       </select>
     );
   }
 
   if (field.type === "multiselect") {
-    const selected = (value as string[]) || [];
+    const selected = Array.isArray(value) ? value : [];
+
     return (
-      <div className={`rounded-xl border p-3 ${error ? "border-red-400 dark:border-red-700" : "border-stone-200 dark:border-neutral-700"}`}>
+      <div
+        className={`rounded-xl border p-3 ${
+          error
+            ? "border-red-400 dark:border-red-700"
+            : "border-stone-200 dark:border-neutral-700"
+        }`}
+      >
         <div className="flex flex-wrap gap-2">
-          {field.options?.map((opt) => {
-            const isSelected = selected.includes(opt);
+          {field.options?.map((option) => {
+            const isSelected = selected.includes(option);
+
             return (
-              <button key={opt} type="button"
-                onClick={() => onChange(field.id, isSelected ? selected.filter((s) => s !== opt) : [...selected, opt])}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all
-                  ${isSelected
-                    ? "bg-stone-900 dark:bg-white border-stone-900 dark:border-white text-white dark:text-stone-900"
-                    : "bg-stone-50 dark:bg-neutral-800 border-stone-200 dark:border-neutral-700 text-stone-600 dark:text-neutral-400 hover:border-stone-400 dark:hover:border-neutral-500"}`}>
-                {opt}
+              <button
+                key={option}
+                type="button"
+                onClick={() =>
+                  onChange(
+                    field.id,
+                    isSelected
+                      ? selected.filter((item) => item !== option)
+                      : [...selected, option]
+                  )
+                }
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                  isSelected
+                    ? "border-stone-900 bg-stone-900 text-white dark:border-white dark:bg-white dark:text-stone-900"
+                    : "border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-500"
+                }`}
+              >
+                {option}
               </button>
             );
           })}
         </div>
         {selected.length > 0 && (
-          <p className="text-[11px] text-stone-400 dark:text-neutral-500 mt-2">{selected.length} selected</p>
+          <p className="mt-2 text-[11px] text-stone-400 dark:text-neutral-500">
+            {selected.length} selected
+          </p>
         )}
       </div>
     );
   }
 
   if (field.type === "boolean") {
-    const boolVal = value as boolean | "";
     return (
       <div className="flex gap-3">
-        {[{ label: "Yes", val: true }, { label: "No", val: false }].map(({ label, val }) => {
-          const isActive = boolVal === val;
+        {[
+          { label: "Yes", optionValue: true },
+          { label: "No", optionValue: false },
+        ].map(({ label, optionValue }) => {
+          const isActive = value === optionValue;
+
           return (
-            <button key={label} type="button" onClick={() => onChange(field.id, val)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all
-                ${isActive
-                  ? val ? "bg-emerald-600 border-emerald-600 text-white" : "bg-red-500 border-red-500 text-white"
-                  : "bg-stone-50 dark:bg-neutral-800 border-stone-200 dark:border-neutral-700 text-stone-600 dark:text-neutral-400 hover:border-stone-300 dark:hover:border-neutral-600"}`}>
+            <button
+              key={label}
+              type="button"
+              onClick={() => onChange(field.id, optionValue)}
+              className={`flex-1 rounded-xl border py-2.5 text-sm font-medium transition-all ${
+                isActive
+                  ? optionValue
+                    ? "border-emerald-600 bg-emerald-600 text-white"
+                    : "border-red-500 bg-red-500 text-white"
+                  : "border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-600"
+              }`}
+            >
               {label}
             </button>
           );
@@ -132,189 +222,310 @@ function FieldRenderer({
   return null;
 }
 
-// ── Page ───────────────────────────────────────────────
 export default function SubmitReportPage() {
-  const schema = getUnitSchema(MOCK_USER.unit);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [formValues, setFormValues] = useState<FormValues>({});
   const [errors, setErrors] = useState<FormErrors>({});
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [successReportId, setSuccessReportId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function updateField(id: string, value: FieldValue) {
-    setFormValues((p) => ({ ...p, [id]: value }));
-    setErrors((p) => { const n = { ...p }; delete n[id]; return n; });
+  const { data, loading, error: meError } = useQuery<{ me: GraphQLUser | null }>(ME_QUERY, {
+    fetchPolicy: "network-only",
+  });
+
+  const [createReport, { loading: isSubmitting }] = useMutation<{
+    createReport: { id: string };
+  }>(CREATE_REPORT_MUTATION);
+
+  const me = data?.me ?? null;
+  const sidebarUser = toSidebarUser(me);
+  const unitName = me?.unit?.name ?? "";
+  const schema = getUnitSchema(unitName);
+  const formUnavailableTitle = meError
+    ? "Could not load report form"
+    : !me
+      ? "Session not available"
+      : !me.unit
+        ? "No unit assigned"
+        : "No form configured";
+  const formUnavailableDescription = meError
+    ? "The dashboard could not load your account details. Refresh the page or sign in again."
+    : !me
+      ? "Your session was not found. Sign in again to continue submitting reports."
+      : !me.unit
+        ? "Your account has not been assigned to a unit yet. Contact your admin."
+        : `A report form has not been set up for ${unitName || "your unit"} yet. Contact your admin.`;
+
+  function updateField(id: string, value: FieldValue | "") {
+    setFormValues((current) => ({ ...current, [id]: value }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[id];
+      delete next._form;
+      return next;
+    });
   }
 
-  function validate(): boolean {
-    if (!schema) return false;
-    const newErrors: FormErrors = {};
-    schema.sections.forEach((section) => {
-      section.fields.forEach((field) => {
-        if (!field.required) return;
-        const val = formValues[field.id];
-        if (val === undefined || val === "" || val === null)
-          newErrors[field.id] = `${field.label} is required`;
-        else if (field.type === "multiselect" && (val as string[]).length === 0)
-          newErrors[field.id] = "Please select at least one option";
-        else if (field.type === "boolean" && val === "")
-          newErrors[field.id] = "Please select Yes or No";
-      });
-    });
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  function validate() {
+    if (!schema) {
+      return false;
+    }
+
+    const nextErrors: FormErrors = {};
+
+    for (const section of schema.sections) {
+      for (const field of section.fields) {
+        if (!field.required) {
+          continue;
+        }
+
+        const value = formValues[field.id];
+
+        if (value === undefined || value === "" || value === null) {
+          nextErrors[field.id] = `${field.label} is required`;
+          continue;
+        }
+
+        if (field.type === "multiselect" && Array.isArray(value) && value.length === 0) {
+          nextErrors[field.id] = "Please select at least one option";
+        }
+      }
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   }
 
   function handleFile(file: File) {
-    if (!ALLOWED_TYPES.includes(file.type)) { setAttachmentError("Only PDF, Word, JPG, and PNG files are allowed"); return; }
-    if (file.size > MAX_FILE_SIZE) { setAttachmentError("File size must be under 5MB"); return; }
-    setAttachment(file); setAttachmentError("");
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setAttachmentError("Only PDF, Word, JPG, and PNG files are allowed.");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setAttachmentError("File size must be under 5MB.");
+      return;
+    }
+
+    setAttachment(file);
+    setAttachmentError("");
   }
 
   async function handleSubmit() {
-    if (!validate()) {
-      document.querySelector("[data-has-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!schema || !validate()) {
+      document
+        .querySelector("[data-has-error]")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    setIsSubmitting(true);
+
     try {
-      await new Promise((r) => setTimeout(r, 1500));
-      setSuccess(true);
-    } catch {
-      setErrors({ _form: "Something went wrong. Please try again." });
-    } finally {
-      setIsSubmitting(false);
+      let attachmentUrl: string | undefined;
+
+      if (attachment) {
+        attachmentUrl = await readFileAsDataUrl(attachment);
+      }
+
+      const sections = schema.sections.map((section) => ({
+        title: section.title,
+        fields: section.fields.map((field) => ({
+          id: field.id,
+          label: field.label,
+          type: field.type as FieldType,
+          value: normalizeFieldValue(field, formValues[field.id] ?? ""),
+        })),
+      }));
+
+      const result = await createReport({
+        variables: {
+          input: {
+            title:
+              String(formValues.serviceTitle ?? "").trim() ||
+              `${unitName} report ${new Date().toISOString().slice(0, 10)}`,
+            sections,
+            attachmentUrl,
+            attachmentName: attachment?.name,
+            attachmentSize: attachment ? formatFileSize(attachment.size) : undefined,
+          },
+        },
+      });
+
+      setSuccessReportId(result.data?.createReport?.id ?? null);
+      setFormValues({});
+      setAttachment(null);
+      setAttachmentError("");
+      setErrors({});
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error) {
+      setErrors({
+        _form:
+          error instanceof Error
+            ? error.message
+            : "Something went wrong. Please try again.",
+      });
     }
   }
 
-  const layout = (
-    <div className="flex h-screen bg-stone-100 dark:bg-neutral-950 overflow-hidden">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={MOCK_USER} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: MOCK_USER.name }} />
-        {null}
+  if (loading) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
+          <main className="flex flex-1 items-center justify-center px-4">
+            <div className="flex items-center gap-2 text-sm text-stone-500 dark:text-neutral-400">
+              <Loader2 size={16} className="animate-spin" />
+              Loading report form...
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (!schema) return (
-    <div className="flex h-screen bg-stone-100 dark:bg-neutral-950 overflow-hidden">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={MOCK_USER} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: MOCK_USER.name }} />
-        <main className="flex-1 flex items-center justify-center px-4">
-          <div className="text-center max-w-sm">
-            <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center mb-4 mx-auto">
-              <AlertCircle size={22} className="text-amber-600 dark:text-amber-400" />
+  if (meError || !me || !me.unit || !schema) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
+          <main className="flex flex-1 items-center justify-center px-4">
+            <div className="max-w-sm text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40">
+                <AlertCircle size={22} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <h2 className="mb-2 text-base font-semibold text-stone-900 dark:text-white">
+                {formUnavailableTitle}
+              </h2>
+              <p className="text-sm text-stone-500 dark:text-neutral-400">
+                {formUnavailableDescription}
+              </p>
             </div>
-            <h2 className="text-base font-semibold text-stone-900 dark:text-white mb-2">No form configured</h2>
-            <p className="text-sm text-stone-500 dark:text-neutral-400">
-              A report form hasn't been set up for <strong>{MOCK_USER.unit}</strong> yet. Contact your admin.
-            </p>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (success) return (
-    <div className="flex h-screen bg-stone-100 dark:bg-neutral-950 overflow-hidden">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={MOCK_USER} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: MOCK_USER.name }} />
-        <main className="flex-1 flex items-center justify-center px-4 fade-up">
-          <div className="text-center max-w-sm">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/50 mb-5">
-              <CheckCircle2 size={32} className="text-emerald-600 dark:text-emerald-400" />
+  if (successReportId) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
+          <main className="fade-up flex flex-1 items-center justify-center px-4">
+            <div className="max-w-sm text-center">
+              <div className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/50">
+                <CheckCircle2 size={32} className="text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <h2 className="mb-2 text-xl font-semibold tracking-tight text-stone-900 dark:text-white">
+                Report submitted
+              </h2>
+              <p className="mb-8 text-sm leading-relaxed text-stone-500 dark:text-neutral-400">
+                Your report has been saved and is now waiting for review.
+              </p>
+              <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                <button
+                  onClick={() => setSuccessReportId(null)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 px-5 py-2.5 text-sm font-medium text-stone-700 transition-all hover:bg-stone-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  Submit another
+                </button>
+                <Link
+                  href={`/dashboard/unit-head/reports/${successReportId}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-stone-700 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100"
+                >
+                  View report
+                </Link>
+              </div>
             </div>
-            <h2 className="text-xl font-semibold text-stone-900 dark:text-white mb-2 tracking-tight">Report submitted!</h2>
-            <p className="text-sm text-stone-500 dark:text-neutral-400 leading-relaxed mb-8">
-              Your report has been submitted and is now pending review by your core leader.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button onClick={() => { setSuccess(false); setFormValues({}); setAttachment(null); setErrors({}); }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium border border-stone-200 dark:border-neutral-700 text-stone-700 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800 transition-all">
-                Submit another
-              </button>
-              <Link href="/dashboard/unit-head"
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-stone-900 dark:bg-white text-white dark:text-stone-900 hover:bg-stone-700 dark:hover:bg-stone-100 transition-all">
-                Go to dashboard
-              </Link>
-            </div>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="flex h-screen bg-stone-100 dark:bg-neutral-950 overflow-hidden">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={MOCK_USER} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: MOCK_USER.name }} />
-        <main className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 fade-up">
-          <div className="max-w-2xl mx-auto">
+    <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
 
-            <Link href="/dashboard/unit-head"
-              className="inline-flex items-center gap-1.5 text-xs text-stone-400 dark:text-neutral-500 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors mb-5">
-              <ArrowLeft size={13} />Back to dashboard
+        <main className="fade-up flex-1 overflow-y-auto px-4 py-6 lg:px-8">
+          <div className="mx-auto max-w-2xl">
+            <Link
+              href="/dashboard/unit-head"
+              className="mb-5 inline-flex items-center gap-1.5 text-xs text-stone-400 transition-colors hover:text-stone-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+            >
+              <ArrowLeft size={13} />
+              Back to dashboard
             </Link>
 
             <div className="mb-6">
-              <h1 className="text-xl font-semibold text-stone-900 dark:text-white tracking-tight">Submit a report</h1>
-              <p className="text-sm text-stone-500 dark:text-neutral-400 mt-1">
-                {schema.unitName} · Fill in the details for your core leader's review
+              <h1 className="text-xl font-semibold tracking-tight text-stone-900 dark:text-white">
+                Submit a report
+              </h1>
+              <p className="mt-1 text-sm text-stone-500 dark:text-neutral-400">
+                {schema.unitName} · fill in the details for your core leader&apos;s review
               </p>
             </div>
 
-            {/* Auto-filled meta */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg bg-stone-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-100 dark:bg-neutral-800">
                   <Building2 size={13} className="text-stone-500 dark:text-neutral-400" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-medium text-stone-400 dark:text-neutral-500 uppercase tracking-wide">Unit</p>
-                  <p className="text-sm font-medium text-stone-900 dark:text-white">{MOCK_USER.unit}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-neutral-500">
+                    Unit
+                  </p>
+                  <p className="text-sm font-medium text-stone-900 dark:text-white">{unitName}</p>
                 </div>
               </div>
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg bg-stone-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-100 dark:bg-neutral-800">
                   <Calendar size={13} className="text-stone-500 dark:text-neutral-400" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-medium text-stone-400 dark:text-neutral-500 uppercase tracking-wide">Date</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-neutral-500">
+                    Date
+                  </p>
                   <p className="text-sm font-medium text-stone-900 dark:text-white">{today()}</p>
                 </div>
               </div>
             </div>
 
             {errors._form && (
-              <div className="flex items-center gap-2.5 px-4 py-3 mb-5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-xl">
-                <AlertCircle size={14} className="text-red-500 shrink-0" />
+              <div className="mb-5 flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/40">
+                <AlertCircle size={14} className="shrink-0 text-red-500" />
                 <p className="text-xs text-red-700 dark:text-red-400">{errors._form}</p>
               </div>
             )}
 
-            {/* Dynamic sections */}
             {schema.sections.map((section) => (
-              <div key={section.title} className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 mb-4">
-                <h2 className="text-xs font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider mb-5">
+              <div
+                key={section.title}
+                className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <h2 className="mb-5 text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                   {section.title}
                 </h2>
                 <div className="space-y-5">
                   {section.fields.map((field) => (
                     <div key={field.id} data-has-error={errors[field.id] ? true : undefined}>
-                      <label className="block text-xs font-medium text-stone-500 dark:text-neutral-400 mb-1.5">
+                      <label className="mb-1.5 block text-xs font-medium text-stone-500 dark:text-neutral-400">
                         {field.label}
-                        {field.required && <span className="text-red-400 ml-1">*</span>}
+                        {field.required && <span className="ml-1 text-red-400">*</span>}
                       </label>
                       {field.helpText && (
-                        <p className="text-[11px] text-stone-400 dark:text-neutral-500 mb-2">{field.helpText}</p>
+                        <p className="mb-2 text-[11px] text-stone-400 dark:text-neutral-500">
+                          {field.helpText}
+                        </p>
                       )}
                       <FieldRenderer
                         field={field}
@@ -323,8 +534,9 @@ export default function SubmitReportPage() {
                         onChange={updateField}
                       />
                       {errors[field.id] && (
-                        <p className="flex items-center gap-1.5 text-xs text-red-500 mt-1.5">
-                          <AlertCircle size={11} />{errors[field.id]}
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-red-500">
+                          <AlertCircle size={11} />
+                          {errors[field.id]}
                         </p>
                       )}
                     </div>
@@ -333,72 +545,119 @@ export default function SubmitReportPage() {
               </div>
             ))}
 
-            {/* Attachment */}
-            <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 mb-4">
-              <h2 className="text-xs font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider mb-5">
-                Attachment <span className="text-stone-300 dark:text-neutral-600 font-normal normal-case">(optional)</span>
+            <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <h2 className="mb-5 text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+                Attachment{" "}
+                <span className="font-normal normal-case text-stone-300 dark:text-neutral-600">
+                  (optional)
+                </span>
               </h2>
+
               {attachment ? (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-stone-200 dark:border-neutral-700 bg-stone-50 dark:bg-neutral-800">
-                  <div className="w-8 h-8 rounded-lg bg-stone-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
+                <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-stone-200 dark:bg-neutral-700">
                     <FileText size={14} className="text-stone-500 dark:text-neutral-400" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-stone-800 dark:text-neutral-200 truncate">{attachment.name}</p>
-                    <p className="text-xs text-stone-400 dark:text-neutral-500">{formatFileSize(attachment.size)}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-stone-800 dark:text-neutral-200">
+                      {attachment.name}
+                    </p>
+                    <p className="text-xs text-stone-400 dark:text-neutral-500">
+                      {formatFileSize(attachment.size)}
+                    </p>
                   </div>
-                  <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                    className="text-stone-400 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1">
+                  <button
+                    onClick={() => {
+                      setAttachment(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                      }
+                    }}
+                    className="p-1 text-stone-400 transition-colors hover:text-red-500 dark:hover:text-red-400"
+                  >
                     <X size={14} />
                   </button>
                 </div>
               ) : (
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOver(true);
+                  }}
                   onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
-                  className={`flex flex-col items-center justify-center gap-2 px-4 py-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors
-                    ${dragOver
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragOver(false);
+                    const file = event.dataTransfer.files?.[0];
+                    if (file) {
+                      handleFile(file);
+                    }
+                  }}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 transition-colors ${
+                    dragOver
                       ? "border-stone-400 bg-stone-100 dark:border-neutral-500 dark:bg-neutral-800"
-                      : "border-stone-200 dark:border-neutral-700 hover:border-stone-300 dark:hover:border-neutral-600 hover:bg-stone-50 dark:hover:bg-neutral-800/60"}`}>
-                  <div className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-neutral-800 flex items-center justify-center">
+                      : "border-stone-200 hover:border-stone-300 hover:bg-stone-50 dark:border-neutral-700 dark:hover:border-neutral-600 dark:hover:bg-neutral-800/60"
+                  }`}
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
                     <Upload size={16} className="text-stone-400 dark:text-neutral-500" />
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-medium text-stone-700 dark:text-neutral-300">
-                      Drop a file or <span className="text-stone-900 dark:text-white underline underline-offset-2">browse</span>
+                      Drop a file or{" "}
+                      <span className="text-stone-900 underline underline-offset-2 dark:text-white">
+                        browse
+                      </span>
                     </p>
-                    <p className="text-xs text-stone-400 dark:text-neutral-500 mt-0.5">PDF, Word, JPG, PNG — max 5MB</p>
+                    <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
+                      PDF, Word, JPG, PNG · up to 5MB
+                    </p>
                   </div>
-                  <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} className="hidden" />
                 </div>
               )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ALLOWED_TYPES.join(",")}
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    handleFile(file);
+                  }
+                }}
+              />
+
               {attachmentError && (
-                <p className="flex items-center gap-1.5 text-xs text-red-500 mt-1.5">
-                  <AlertCircle size={11} />{attachmentError}
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-red-500">
+                  <AlertCircle size={11} />
+                  {attachmentError}
                 </p>
               )}
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center justify-between gap-3 mb-6">
-              <Link href="/dashboard/unit-head"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-stone-200 dark:border-neutral-700 text-stone-600 dark:text-neutral-400 hover:bg-stone-50 dark:hover:bg-neutral-800 transition-all">
-                Cancel
-              </Link>
-              <button onClick={handleSubmit} disabled={isSubmitting}
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium bg-stone-900 dark:bg-white text-white dark:text-stone-900 hover:bg-stone-700 dark:hover:bg-stone-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]">
-                {isSubmitting
-                  ? <><Loader2 size={14} className="animate-spin" />Submitting…</>
-                  : <><Paperclip size={14} />Submit report</>}
+            <div className="mb-10 flex items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white px-6 py-4 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex items-center gap-2 text-xs text-stone-400 dark:text-neutral-500">
+                <Paperclip size={13} />
+                Attachment storage is embedded for now, so keep uploads small.
+              </div>
+              <button
+                onClick={() => void handleSubmit()}
+                disabled={isSubmitting}
+                className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit report"
+                )}
               </button>
             </div>
-
-            <p className="text-xs text-center text-stone-400 dark:text-neutral-600 mb-8">
-              Once submitted, your report will be sent to your core leader for review. You cannot edit it after submission.
-            </p>
           </div>
         </main>
       </div>

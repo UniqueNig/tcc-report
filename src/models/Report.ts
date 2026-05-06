@@ -1,28 +1,78 @@
-import mongoose from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
-const ReportSchema = new mongoose.Schema(
+// Mirrors the ReportField type from unitSchemas.ts
+export interface IReportField {
+  id: string;
+  label: string;
+  value: string | number | boolean | string[];
+  type: "text" | "number" | "currency" | "textarea" | "boolean" | "select" | "multiselect";
+}
+
+export interface IReportSection {
+  title: string;
+  fields: IReportField[];
+}
+
+export interface IReport extends Document {
+  title: string;
+  unitId: mongoose.Types.ObjectId;
+  submittedBy: mongoose.Types.ObjectId;
+  status: "pending" | "reviewed";
+  reviewedBy?: mongoose.Types.ObjectId;
+  reviewedAt?: Date;
+  sections: IReportSection[];
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentSize?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ReportFieldSchema = new Schema<IReportField>(
   {
-    title: String,
-    content: String,
-    unitId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "units",
-    },
-    submittedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "users",
-    },
-    status: {
+    id: { type: String, required: true },
+    label: { type: String, required: true },
+    value: { type: Schema.Types.Mixed, required: true },
+    type: {
       type: String,
-      default: "PENDING",
+      enum: ["text", "number", "currency", "textarea", "boolean", "select", "multiselect"],
+      required: true,
     },
   },
-  { timestamps: true },
+  { _id: false }
 );
 
-const reportModel =
-  mongoose.models["reports"] || mongoose.model("reports", ReportSchema);
-export default reportModel;
+const ReportSectionSchema = new Schema<IReportSection>(
+  {
+    title: { type: String, required: true },
+    fields: { type: [ReportFieldSchema], required: true },
+  },
+  { _id: false }
+);
 
-// export const Report =
-//   mongoose.models.Report || mongoose.model("Report", ReportSchema);
+const ReportSchema = new Schema<IReport>(
+  {
+    title: { type: String, required: true, trim: true },
+    unitId: { type: Schema.Types.ObjectId, ref: "Unit", required: true },
+    submittedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    status: {
+      type: String,
+      enum: ["pending", "reviewed"],
+      default: "pending",
+    },
+    reviewedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    reviewedAt: { type: Date },
+    sections: { type: [ReportSectionSchema], required: true },
+    attachmentUrl: { type: String },
+    attachmentName: { type: String },
+    attachmentSize: { type: String },
+  },
+  { timestamps: true }
+);
+
+// Indexes for common queries
+ReportSchema.index({ unitId: 1, createdAt: -1 });
+ReportSchema.index({ submittedBy: 1, createdAt: -1 });
+ReportSchema.index({ status: 1 });
+
+export const Report = mongoose.models.Report ?? mongoose.model<IReport>("Report", ReportSchema);

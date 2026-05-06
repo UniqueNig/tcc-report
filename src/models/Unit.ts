@@ -1,15 +1,22 @@
-import mongoose from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
-const UnitSchema = new mongoose.Schema({
-  name: String,
-  coreLeaderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "users",
+export interface IUnit extends Document {
+  name: string;
+  coreLeaderId: mongoose.Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const UnitSchema = new Schema<IUnit>(
+  {
+    name: { type: String, required: true, trim: true, unique: true },
+    coreLeaderId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
   },
-});
+  { timestamps: true }
+);
 
-const unitModel =
-  mongoose.models["units"] || mongoose.model("units", UnitSchema);
-export default unitModel;
-
-// export const Unit = mongoose.models["units"] || mongoose.model("units", UnitSchema);
+export const Unit = mongoose.models.Unit ?? mongoose.model<IUnit>("Unit", UnitSchema);

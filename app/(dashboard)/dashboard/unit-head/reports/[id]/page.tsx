@@ -1,389 +1,245 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@apollo/client/react";
 import {
-  ArrowLeft, Building2, Calendar, User,
-  Clock, CheckCircle2, MessageSquare,
-  Paperclip, Download, FileText,
+  AlertCircle,
+  ArrowLeft,
+  Building2,
+  Calendar,
+  Download,
+  FileText,
+  MessageSquare,
+  Paperclip,
+  User,
 } from "lucide-react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import ReportSections from "@/src/components/reports/ReportSections";
+import ReportStatusPill from "@/src/components/reports/ReportStatusPill";
+import { REPORT_DETAIL_QUERY } from "@/src/lib/graphqlDocuments";
+import {
+  formatDateTime,
+  formatLongDate,
+  getInitials,
+  toSidebarUser,
+  type GraphQLReport,
+  type GraphQLUser,
+} from "@/src/lib/dashboardHelpers";
 
-// ── Types ──────────────────────────────────────────────
-type ReportStatus = "pending" | "reviewed";
-
-interface Comment {
-  id: string;
-  author: string;
-  role: "CORE_LEADER" | "ADMIN";
-  content: string;
-  createdAt: string;
-}
-
-// Dynamic fields: key → label + value pairs stored from submission
-interface ReportField {
-  id: string;
-  label: string;
-  value: string | number | boolean | string[];
-  type: "text" | "number" | "currency" | "textarea" | "boolean" | "select" | "multiselect";
-}
-
-interface ReportSection {
-  title: string;
-  fields: ReportField[];
-}
-
-interface ReportDetail {
-  id: string;
-  title: string;
-  unit: string;
-  submittedBy: string;
-  dateSubmitted: string;
-  status: ReportStatus;
-  attachment?: { name: string; size: string; url: string };
-  sections: ReportSection[]; // dynamic sections from unitSchema
-  comments: Comment[];
-}
-
-// ── Mock data ──────────────────────────────────────────
-// This mirrors what the DB will return after the form is submitted.
-// The sections + fields come from unitSchemas.ts at submission time
-// and are stored as a structured object in MongoDB.
-const MOCK_REPORT: ReportDetail = {
-  id: "1",
-  title: "Sunday Service — May 4, 2026",
-  unit: "Music Unit",
-  submittedBy: "Adeola Obi",
-  dateSubmitted: "2026-05-04T09:00:00Z",
-  status: "pending",
-  attachment: { name: "sunday-service-attendance.pdf", size: "124 KB", url: "#" },
-  sections: [
-    {
-      title: "Service info",
-      fields: [
-        { id: "serviceTitle", label: "Service / event title", value: "Sunday Service — May 4, 2026", type: "text" },
-        { id: "serviceType", label: "Service type", value: "Sunday Service", type: "select" },
-      ],
-    },
-    {
-      title: "Music report",
-      fields: [
-        { id: "ministrationTitles", label: "Song / ministration titles", value: "You Are Great\nAlpha and Omega\nJehovah You Are Welcome\nHoly Spirit Come\nGreat Are You Lord", type: "textarea" },
-        { id: "choirPresent", label: "Choir members present", value: 18, type: "number" },
-        { id: "choirTotal", label: "Total choir members", value: 24, type: "number" },
-        { id: "rehearsalHeld", label: "Was a rehearsal held before service?", value: true, type: "boolean" },
-        { id: "newSongsIntroduced", label: "New songs introduced", value: 2, type: "number" },
-        { id: "highlights", label: "Highlights", value: "Sister Blessing led worship for the first time and did an excellent job. The congregation was highly responsive during the praise session.", type: "textarea" },
-      ],
-    },
-    {
-      title: "Follow-up",
-      fields: [
-        { id: "challenges", label: "Challenges", value: "Two team members were absent without prior notice. PA system had a brief feedback issue around the 20-minute mark but was resolved quickly.", type: "textarea" },
-        { id: "prayerPoints", label: "Prayer points", value: "Pray for consistency in choir rehearsal attendance. Pray for the sound system upgrade. Pray for new members joining the music unit.", type: "textarea" },
-      ],
-    },
-  ],
-  comments: [
-    {
-      id: "c1",
-      author: "Br. Oluwole",
-      role: "CORE_LEADER",
-      content: "Thank you for this detailed report Adeola. Please ensure the absent team members provide an explanation before the next service. The choir ministration feedback was noted — well done to the team.",
-      createdAt: "2026-05-04T14:30:00Z",
-    },
-  ],
-};
-
-const MOCK_USER = { name: "Adeola Obi", unit: "Music Unit", role: "UNIT_HEAD" as const };
-
-// ── Helpers ────────────────────────────────────────────
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
-}
-function formatCommentDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-function getInitials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-}
-
-// ── Field value renderer ───────────────────────────────
-function FieldValue({ field }: { field: ReportField }) {
-  if (field.type === "boolean") {
-    const val = field.value as boolean;
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
-        ${val
-          ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400"
-          : "bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400"
-        }`}>
-        {val ? <CheckCircle2 size={11} /> : <Clock size={11} />}
-        {val ? "Yes" : "No"}
-      </span>
-    );
-  }
-
-  if (field.type === "multiselect") {
-    const vals = field.value as string[];
-    return (
-      <div className="flex flex-wrap gap-1.5">
-        {vals.map((v) => (
-          <span key={v} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-stone-100 dark:bg-neutral-800 text-stone-700 dark:text-neutral-300">
-            {v}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  if (field.type === "currency") {
-    return (
-      <p className="text-sm font-semibold text-stone-900 dark:text-white">
-        ₦{Number(field.value).toLocaleString("en-NG")}
-      </p>
-    );
-  }
-
-  if (field.type === "number") {
-    return (
-      <p className="text-2xl font-semibold text-stone-900 dark:text-white tracking-tight">
-        {Number(field.value).toLocaleString()}
-      </p>
-    );
-  }
-
-  if (field.type === "textarea") {
-    return (
-      <p className="text-sm text-stone-700 dark:text-neutral-300 leading-relaxed whitespace-pre-line">
-        {String(field.value)}
-      </p>
-    );
-  }
-
-  return (
-    <p className="text-sm text-stone-800 dark:text-neutral-200 font-medium">
-      {String(field.value)}
-    </p>
-  );
-}
-
-// ── Skeleton ───────────────────────────────────────────
 function ReportSkeleton() {
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <div className="skeleton h-4 w-24 rounded mb-6" />
-      <div className="skeleton h-7 w-2/3 rounded mb-2" />
-      <div className="skeleton h-4 w-1/3 rounded mb-8" />
-      <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 space-y-4">
-        <div className="grid grid-cols-2 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="skeleton h-2.5 w-20 rounded" />
-              <div className="skeleton h-4 w-32 rounded" />
-            </div>
-          ))}
-        </div>
-      </div>
-      {[...Array(2)].map((_, i) => (
-        <div key={i} className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 space-y-4">
-          <div className="skeleton h-3 w-28 rounded" />
-          {[...Array(3)].map((_, j) => (
-            <div key={j} className="space-y-2">
-              <div className="skeleton h-2.5 w-24 rounded" />
-              <div className="skeleton h-4 rounded" style={{ width: `${50 + Math.random() * 40}%` }} />
-            </div>
-          ))}
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mb-6 h-4 w-24 rounded bg-stone-200 dark:bg-neutral-800" />
+      <div className="mb-2 h-7 w-2/3 rounded bg-stone-200 dark:bg-neutral-800" />
+      <div className="mb-8 h-4 w-1/3 rounded bg-stone-200 dark:bg-neutral-800" />
+      {[...Array(3)].map((_, index) => (
+        <div
+          key={index}
+          className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
+        >
+          <div className="mb-4 h-3 w-28 rounded bg-stone-200 dark:bg-neutral-800" />
+          <div className="space-y-3">
+            <div className="h-3 w-24 rounded bg-stone-200 dark:bg-neutral-800" />
+            <div className="h-4 w-3/4 rounded bg-stone-200 dark:bg-neutral-800" />
+            <div className="h-3 w-32 rounded bg-stone-200 dark:bg-neutral-800" />
+            <div className="h-4 w-1/2 rounded bg-stone-200 dark:bg-neutral-800" />
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-// ── Page ───────────────────────────────────────────────
 export default function UnitHeadReportDetailPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isLoading] = useState(false);
+  const params = useParams<{ id: string }>();
+  const reportId = params?.id ?? "";
 
-  // In production:
-  // const params = useParams();
-  // const { data, loading } = useQuery(GET_REPORT, { variables: { id: params.id } });
-  const report = MOCK_REPORT;
+  const { data, loading } = useQuery<{
+    me: GraphQLUser | null;
+    report: GraphQLReport | null;
+  }>(REPORT_DETAIL_QUERY, {
+    variables: { id: reportId },
+    skip: !reportId,
+    fetchPolicy: "network-only",
+  });
+
+  const me = data?.me ?? null;
+  const report = data?.report ?? null;
+  const sidebarUser = toSidebarUser(me);
 
   return (
-    <div className="flex h-screen bg-stone-100 dark:bg-neutral-950 overflow-hidden">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={MOCK_USER} />
+    <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
 
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: MOCK_USER.name }} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
 
-        <main className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 fade-up">
-          {isLoading ? (
+        <main className="fade-up flex-1 overflow-y-auto px-4 py-6 lg:px-8">
+          {loading ? (
             <ReportSkeleton />
+          ) : !report ? (
+            <div className="mx-auto flex max-w-md flex-col items-center justify-center py-24 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40">
+                <AlertCircle size={22} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <h2 className="mb-2 text-base font-semibold text-stone-900 dark:text-white">
+                Report not found
+              </h2>
+              <p className="text-sm text-stone-500 dark:text-neutral-400">
+                This report could not be loaded or you no longer have access to it.
+              </p>
+            </div>
           ) : (
-            <div className="max-w-3xl mx-auto">
-
-              {/* Back */}
-              <Link href="/dashboard/unit-head/reports"
-                className="inline-flex items-center gap-1.5 text-xs text-stone-400 dark:text-neutral-500 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors mb-5">
-                <ArrowLeft size={13} />Back to my reports
+            <div className="mx-auto max-w-3xl">
+              <Link
+                href="/dashboard/unit-head/reports"
+                className="mb-5 inline-flex items-center gap-1.5 text-xs text-stone-400 transition-colors hover:text-stone-700 dark:text-neutral-500 dark:hover:text-neutral-200"
+              >
+                <ArrowLeft size={13} />
+                Back to my reports
               </Link>
 
-              {/* Title + status */}
-              <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+              <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h1 className="text-xl font-semibold text-stone-900 dark:text-white tracking-tight leading-snug">
+                  <h1 className="text-xl font-semibold leading-snug tracking-tight text-stone-900 dark:text-white">
                     {report.title}
                   </h1>
-                  <p className="text-sm text-stone-400 dark:text-neutral-500 mt-1">Report #{report.id}</p>
+                  <p className="mt-1 text-sm text-stone-400 dark:text-neutral-500">
+                    Report #{report.id}
+                  </p>
                 </div>
-                {report.status === "reviewed" ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900">
-                    <CheckCircle2 size={12} />Reviewed
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border border-amber-100 dark:border-amber-900">
-                    <Clock size={12} />Pending review
-                  </span>
-                )}
+                <ReportStatusPill status={report.status} />
               </div>
 
-              {/* Meta card */}
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 mb-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   {[
-                    { icon: User, label: "Submitted by", value: report.submittedBy },
-                    { icon: Building2, label: "Unit", value: report.unit },
-                    { icon: Calendar, label: "Date submitted", value: formatDate(report.dateSubmitted) },
-                    { icon: FileText, label: "Status", value: report.status === "reviewed" ? "Reviewed by core leader" : "Awaiting review" },
+                    {
+                      icon: User,
+                      label: "Submitted by",
+                      value: report.submittedByUser?.name ?? "Unknown",
+                    },
+                    {
+                      icon: Building2,
+                      label: "Unit",
+                      value: report.unit?.name ?? "Unknown unit",
+                    },
+                    {
+                      icon: Calendar,
+                      label: "Date submitted",
+                      value: formatLongDate(report.createdAt),
+                    },
+                    {
+                      icon: FileText,
+                      label: "Status",
+                      value:
+                        report.status === "reviewed"
+                          ? "Reviewed by leadership"
+                          : "Awaiting review",
+                    },
                   ].map(({ icon: Icon, label, value }) => (
                     <div key={label} className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-stone-100 dark:bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-stone-100 dark:bg-neutral-800">
                         <Icon size={13} className="text-stone-500 dark:text-neutral-400" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider mb-0.5">{label}</p>
-                        <p className="text-sm text-stone-800 dark:text-neutral-200 font-medium">{value}</p>
+                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+                          {label}
+                        </p>
+                        <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">
+                          {value}
+                        </p>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Attachment */}
-              {report.attachment && (
-                <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl px-5 py-4 mb-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
+              {report.attachmentName && (
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
                     <Paperclip size={15} className="text-stone-500 dark:text-neutral-400" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-stone-800 dark:text-neutral-200 truncate">{report.attachment.name}</p>
-                    <p className="text-xs text-stone-400 dark:text-neutral-500">{report.attachment.size}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-stone-800 dark:text-neutral-200">
+                      {report.attachmentName}
+                    </p>
+                    <p className="text-xs text-stone-400 dark:text-neutral-500">
+                      {report.attachmentSize ?? "Attached file"}
+                    </p>
                   </div>
-                  <a href={report.attachment.url} download
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-stone-200 dark:border-neutral-700 text-stone-600 dark:text-neutral-400 hover:bg-stone-100 dark:hover:bg-neutral-800 hover:text-stone-900 dark:hover:text-white transition-all shrink-0">
-                    <Download size={12} />Download
-                  </a>
+                  {report.attachmentUrl && (
+                    <a
+                      href={report.attachmentUrl}
+                      download={report.attachmentName}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                    >
+                      <Download size={12} />
+                      Download
+                    </a>
+                  )}
                 </div>
               )}
 
-              {/* Dynamic report sections */}
-              {report.sections.map((section) => {
-                // Separate number fields (render as stat row) from the rest
-                const numberFields = section.fields.filter((f) => f.type === "number" || f.type === "currency");
-                const otherFields = section.fields.filter((f) => f.type !== "number" && f.type !== "currency");
+              {report.sections && report.sections.length > 0 && (
+                <div className="mb-4 space-y-4">
+                  <ReportSections sections={report.sections} />
+                </div>
+              )}
 
-                return (
-                  <div key={section.title} className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl mb-4 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-stone-100 dark:border-neutral-800">
-                      <h2 className="text-xs font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider">
-                        {section.title}
-                      </h2>
-                    </div>
-
-                    {/* Number/currency fields as stat strip */}
-                    {numberFields.length > 0 && (
-                      <div className={`grid divide-x divide-stone-100 dark:divide-neutral-800 border-b border-stone-100 dark:border-neutral-800`}
-                        style={{ gridTemplateColumns: `repeat(${Math.min(numberFields.length, 3)}, 1fr)` }}>
-                        {numberFields.map((field) => (
-                          <div key={field.id} className="px-5 py-4 text-center">
-                            <p className="text-xs text-stone-400 dark:text-neutral-500 mb-1">{field.label}</p>
-                            <FieldValue field={field} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Other fields */}
-                    {otherFields.length > 0 && (
-                      <div className="px-6 py-5 space-y-5">
-                        {otherFields.map((field) => (
-                          <div key={field.id}>
-                            <p className="text-xs font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider mb-2">
-                              {field.label}
-                            </p>
-                            <FieldValue field={field} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Comments — READ ONLY for unit head */}
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <h2 className="text-xs font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider">
+              <div className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mb-5 flex items-center gap-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                     Comments from leadership
                   </h2>
-                  {report.comments.length > 0 && (
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-stone-100 dark:bg-neutral-800 text-[10px] font-semibold text-stone-500 dark:text-neutral-400">
+                  {report.comments && report.comments.length > 0 && (
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-stone-100 text-[10px] font-semibold text-stone-500 dark:bg-neutral-800 dark:text-neutral-400">
                       {report.comments.length}
                     </span>
                   )}
                 </div>
 
-                {report.comments.length === 0 ? (
+                {!report.comments || report.comments.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-10 text-center">
-                    <div className="w-10 h-10 rounded-full bg-stone-100 dark:bg-neutral-800 flex items-center justify-center mb-3">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 dark:bg-neutral-800">
                       <MessageSquare size={16} className="text-stone-400 dark:text-neutral-500" />
                     </div>
-                    <p className="text-sm font-medium text-stone-600 dark:text-neutral-400">No comments yet</p>
-                    <p className="text-xs text-stone-400 dark:text-neutral-500 mt-1">
-                      Your core leader will leave feedback here after reviewing
+                    <p className="text-sm font-medium text-stone-600 dark:text-neutral-400">
+                      No comments yet
+                    </p>
+                    <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
+                      Your core leader will leave feedback here after reviewing.
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {report.comments.map((comment) => (
                       <div key={comment.id} className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-full bg-stone-200 dark:bg-neutral-700 flex items-center justify-center text-xs font-semibold text-stone-600 dark:text-neutral-300 shrink-0 select-none">
-                          {getInitials(comment.author)}
+                        <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-600 dark:bg-neutral-700 dark:text-neutral-300">
+                          {getInitials(comment.authorUser?.name ?? "L")}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="bg-stone-50 dark:bg-neutral-800 border border-stone-100 dark:border-neutral-700/60 rounded-2xl rounded-tl-sm px-4 py-3">
-                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="rounded-2xl rounded-tl-sm border border-stone-100 bg-stone-50 px-4 py-3 dark:border-neutral-700/60 dark:bg-neutral-800">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-stone-800 dark:text-neutral-200">{comment.author}</span>
-                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full
-                                  ${comment.role === "ADMIN"
-                                    ? "bg-stone-200 dark:bg-neutral-700 text-stone-600 dark:text-neutral-300"
-                                    : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"}`}>
+                                <span className="text-xs font-semibold text-stone-800 dark:text-neutral-200">
+                                  {comment.authorUser?.name ?? "Leadership"}
+                                </span>
+                                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
                                   {comment.role === "ADMIN" ? "Pastorate" : "Core Leader"}
                                 </span>
                               </div>
-                              <span className="text-[11px] text-stone-400 dark:text-neutral-500 shrink-0">
-                                {formatCommentDate(comment.createdAt)}
+                              <span className="text-[11px] text-stone-400 dark:text-neutral-500">
+                                {formatDateTime(comment.createdAt)}
                               </span>
                             </div>
-                            <p className="text-sm text-stone-700 dark:text-neutral-300 leading-relaxed">{comment.content}</p>
+                            <p className="text-sm leading-relaxed text-stone-700 dark:text-neutral-300">
+                              {comment.body}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -391,7 +247,6 @@ export default function UnitHeadReportDetailPage() {
                   </div>
                 )}
               </div>
-
             </div>
           )}
         </main>

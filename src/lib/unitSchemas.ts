@@ -328,8 +328,108 @@ export const UNIT_SCHEMAS: Record<string, UnitSchema> = {
 });
 
 // ── Helper: get schema by unit name ───────────────────
+function normalizeUnitName(unitName: string) {
+  return unitName
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((part) => part && part !== "unit")
+    .join(" ");
+}
+
+const UNIT_SCHEMA_LOOKUP = Object.keys(UNIT_SCHEMAS).reduce<Record<string, string>>(
+  (lookup, unitName) => {
+    lookup[normalizeUnitName(unitName)] = unitName;
+    return lookup;
+  },
+  {}
+);
+
+const UNIT_SCHEMA_ALIASES: Record<string, string> = {
+  accounting: "Finance Unit (Accounting)",
+  children: "Children Unit",
+  "children church": "Children Unit",
+  choir: "Music Unit",
+  finance: "Finance Unit (Accounting)",
+  "finance accounting": "Finance Unit (Accounting)",
+  media: "Media Unit",
+  music: "Music Unit",
+  prayer: "Prayer Unit",
+  protocol: "Protocol Unit",
+  sound: "Technical/Sound Unit",
+  technical: "Technical/Sound Unit",
+  "technical sound": "Technical/Sound Unit",
+  ushering: "Ushering Unit",
+  ushers: "Ushering Unit",
+  welfare: "Welfare Unit",
+  worship: "Music Unit",
+};
+
+function createDefaultUnitSchema(unitName: string): UnitSchema {
+  const displayName = unitName.trim();
+
+  return {
+    unitName: displayName,
+    sections: [
+      {
+        title: "Service info",
+        fields: SHARED_FIELDS.slice(0, 2),
+      },
+      {
+        title: "General report",
+        fields: [
+          {
+            id: "summary",
+            label: "Report summary",
+            type: "textarea",
+            required: true,
+            placeholder: "Summarize what happened in your unit for this service or event...",
+          },
+          {
+            id: "membersPresent",
+            label: "Team members present",
+            type: "number",
+            required: false,
+            placeholder: "e.g. 8",
+          },
+          {
+            id: "activitiesCompleted",
+            label: "Activities completed",
+            type: "textarea",
+            required: false,
+            placeholder: "List the main activities, duties, or assignments completed...",
+          },
+          {
+            id: "highlights",
+            label: "Highlights",
+            type: "textarea",
+            required: false,
+            placeholder: "Anything noteworthy from the unit...",
+          },
+          {
+            id: "followUpActions",
+            label: "Follow-up actions",
+            type: "textarea",
+            required: false,
+            placeholder: "Anything that needs attention before the next service...",
+          },
+        ],
+      },
+      { title: "Follow-up", fields: SHARED_FIELDS.slice(2) },
+    ],
+  };
+}
+
 export function getUnitSchema(unitName: string): UnitSchema | null {
-  return UNIT_SCHEMAS[unitName] ?? null;
+  const trimmedName = unitName.trim();
+  if (!trimmedName) return null;
+
+  const normalizedName = normalizeUnitName(trimmedName);
+  const schemaName = UNIT_SCHEMA_LOOKUP[normalizedName] ?? UNIT_SCHEMA_ALIASES[normalizedName];
+
+  return schemaName ? UNIT_SCHEMAS[schemaName] ?? createDefaultUnitSchema(trimmedName) : createDefaultUnitSchema(trimmedName);
 }
 
 // ── Helper: get all unit names ─────────────────────────

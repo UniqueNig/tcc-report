@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Menu, Sun, Moon, Bell, FileText,
   CheckCircle2, MessageSquare, X, Check,
@@ -84,26 +84,41 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
+function subscribeTheme(onStoreChange: () => void) {
+  if (typeof window === "undefined" || typeof MutationObserver === "undefined") {
+    return () => {};
+  }
+
+  const observer = new MutationObserver(onStoreChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+
+  return () => observer.disconnect();
+}
+
+function getThemeSnapshot() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
+
+function getServerThemeSnapshot() {
+  return false;
+}
+
 // ── Component ──────────────────────────────────────────
 export default function Topbar({ onMenuClick, user }: TopbarProps) {
-  const [isDark, setIsDark] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const isDark = useSyncExternalStore(
+    subscribeTheme,
+    getThemeSnapshot,
+    getServerThemeSnapshot
+  );
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
-
-  // Theme sync on mount
-  useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem("theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const dark = stored === "dark" || (!stored && prefersDark);
-    setIsDark(dark);
-    document.documentElement.classList.toggle("dark", dark);
-  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -126,7 +141,6 @@ export default function Topbar({ onMenuClick, user }: TopbarProps) {
 
   function toggleTheme() {
     const next = !isDark;
-    setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("theme", next ? "dark" : "light");
   }
@@ -166,13 +180,11 @@ export default function Topbar({ onMenuClick, user }: TopbarProps) {
       <div className="flex items-center gap-1">
 
         {/* Theme toggle */}
-        {mounted && (
-          <button onClick={toggleTheme}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 dark:text-neutral-500 hover:bg-stone-100 dark:hover:bg-neutral-800 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors"
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}>
-            {isDark ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
-        )}
+        <button onClick={toggleTheme}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 dark:text-neutral-500 hover:bg-stone-100 dark:hover:bg-neutral-800 hover:text-stone-700 dark:hover:text-neutral-200 transition-colors"
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+          {isDark ? <Sun size={15} /> : <Moon size={15} />}
+        </button>
 
         {/* Bell */}
         <div className="relative">

@@ -35,3 +35,35 @@
             ├── analytics/page.tsx              ✅
             ├── users/page.tsx                  ✅
             └── units/page.tsx                  ✅
+
+
+
+
+            app/
+└── api/
+    └── graphql/
+        └── route.ts              ← Single GraphQL endpoint
+
+src/
+├── lib/
+│   ├── db.ts                     ← MongoDB connection
+│   ├── auth.ts                   ← NextAuth config
+│   ├── unitSchemas.ts            ← (already done)
+│   └── graphql/
+│       ├── schema.ts             ← Full GraphQL type definitions
+│       ├── resolvers/
+│       │   ├── index.ts          ← Merges all resolvers
+│       │   ├── auth.resolvers.ts
+│       │   ├── report.resolvers.ts
+│       │   ├── user.resolvers.ts
+│       │   ├── unit.resolvers.ts
+│       │   └── comment.resolvers.ts
+│       └── context.ts            ← Request context (session + db)
+│
+├── models/
+│   ├── User.ts                   ← Mongoose model
+│   ├── Unit.ts
+│   ├── Report.ts
+│   └── Comment.ts
+│
+└── middleware.ts                 ← Route protection by role

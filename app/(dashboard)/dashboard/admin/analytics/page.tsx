@@ -1,123 +1,109 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState, type ElementType } from "react";
+import { useQuery } from "@apollo/client/react";
 import {
-  Users, TrendingUp, TrendingDown, BarChart2,
-  ChevronDown, Building2, Calendar,
+  AlertCircle,
+  BarChart2,
+  Building2,
+  Calendar,
+  ChevronDown,
+  Loader2,
+  TrendingDown,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import { ADMIN_ANALYTICS_QUERY } from "@/src/lib/graphqlDocuments";
+import {
+  buildAttendanceRecords,
+  buildOfferingRecords,
+  formatCurrency,
+  formatDate,
+  toSidebarUser,
+  type GraphQLReport,
+  type GraphQLUser,
+} from "@/src/lib/dashboardHelpers";
 
-// ── Types ──────────────────────────────────────────────
-interface AttendanceRecord {
-  date: string;        // ISO
-  serviceType: string;
-  male: number;
-  female: number;
-  children: number;
-  firstTimers: number;
-}
-
-interface OfferingRecord {
-  date: string;
-  serviceType: string;
-  collected: number;   // from Ushering
-  banked: number;      // from Finance
-}
-
-// ── Mock data ──────────────────────────────────────────
-const ATTENDANCE_DATA: AttendanceRecord[] = [
-  { date: "2026-05-04", serviceType: "Sunday Service",  male: 145, female: 163, children: 42, firstTimers: 12 },
-  { date: "2026-04-30", serviceType: "Midweek Service", male: 88,  female: 95,  children: 18, firstTimers: 4  },
-  { date: "2026-04-27", serviceType: "Sunday Service",  male: 138, female: 155, children: 39, firstTimers: 9  },
-  { date: "2026-04-18", serviceType: "Special Event",   male: 190, female: 210, children: 60, firstTimers: 25 },
-  { date: "2026-04-16", serviceType: "Midweek Service", male: 80,  female: 90,  children: 15, firstTimers: 2  },
-  { date: "2026-04-13", serviceType: "Sunday Service",  male: 130, female: 148, children: 36, firstTimers: 7  },
-  { date: "2026-04-09", serviceType: "Midweek Service", male: 76,  female: 88,  children: 12, firstTimers: 3  },
-  { date: "2026-04-06", serviceType: "Sunday Service",  male: 128, female: 142, children: 35, firstTimers: 6  },
-  { date: "2026-03-30", serviceType: "Sunday Service",  male: 120, female: 135, children: 30, firstTimers: 5  },
-  { date: "2026-03-25", serviceType: "Midweek Service", male: 72,  female: 80,  children: 11, firstTimers: 1  },
-  { date: "2026-03-22", serviceType: "Sunday Service",  male: 115, female: 128, children: 28, firstTimers: 4  },
-  { date: "2026-03-15", serviceType: "Sunday Service",  male: 118, female: 130, children: 29, firstTimers: 6  },
-  { date: "2026-02-22", serviceType: "Sunday Service",  male: 108, female: 120, children: 25, firstTimers: 3  },
-  { date: "2026-02-15", serviceType: "Sunday Service",  male: 110, female: 122, children: 26, firstTimers: 4  },
-  { date: "2026-01-25", serviceType: "Sunday Service",  male: 100, female: 112, children: 22, firstTimers: 2  },
-  { date: "2026-01-18", serviceType: "Sunday Service",  male: 98,  female: 108, children: 20, firstTimers: 3  },
-];
-
-const OFFERING_DATA: OfferingRecord[] = [
-  { date: "2026-05-04", serviceType: "Sunday Service",  collected: 148500, banked: 148500 },
-  { date: "2026-04-30", serviceType: "Midweek Service", collected: 62000,  banked: 62000  },
-  { date: "2026-04-27", serviceType: "Sunday Service",  collected: 135000, banked: 134500 },
-  { date: "2026-04-18", serviceType: "Special Event",   collected: 280000, banked: 280000 },
-  { date: "2026-04-16", serviceType: "Midweek Service", collected: 55000,  banked: 55000  },
-  { date: "2026-04-13", serviceType: "Sunday Service",  collected: 128000, banked: 128000 },
-  { date: "2026-04-09", serviceType: "Midweek Service", collected: 48000,  banked: 47500  },
-  { date: "2026-04-06", serviceType: "Sunday Service",  collected: 122000, banked: 122000 },
-  { date: "2026-03-30", serviceType: "Sunday Service",  collected: 115000, banked: 115000 },
-  { date: "2026-03-25", serviceType: "Midweek Service", collected: 42000,  banked: 42000  },
-  { date: "2026-03-22", serviceType: "Sunday Service",  collected: 108000, banked: 108000 },
-  { date: "2026-03-15", serviceType: "Sunday Service",  collected: 112000, banked: 112000 },
-  { date: "2026-02-22", serviceType: "Sunday Service",  collected: 98000,  banked: 98000  },
-  { date: "2026-02-15", serviceType: "Sunday Service",  collected: 95000,  banked: 95000  },
-  { date: "2026-01-25", serviceType: "Sunday Service",  collected: 88000,  banked: 88000  },
-  { date: "2026-01-18", serviceType: "Sunday Service",  collected: 85000,  banked: 85000  },
-];
-
-const MOCK_USER = { name: "Pastor Adewale", role: "ADMIN" as const };
-
-// ── Helpers ────────────────────────────────────────────
-function formatCurrency(n: number) {
-  return `₦${n.toLocaleString("en-NG")}`;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-}
+type Period = "monthly" | "quarterly" | "yearly";
+type View = "attendance" | "offering";
 
 function getQuarter(iso: string) {
-  const m = new Date(iso).getMonth();
-  return `Q${Math.floor(m / 3) + 1}`;
+  const month = new Date(iso).getMonth();
+  return `Q${Math.floor(month / 3) + 1}`;
 }
 
 function getMonth(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
 }
 
-type Period = "monthly" | "quarterly" | "yearly";
-type View = "attendance" | "offering";
+function groupByPeriod<T extends { date: string }>(
+  data: T[],
+  period: Period,
+  getValue: (record: T) => number
+) {
+  const groups: Record<string, number[]> = {};
+  const sorted = [...data].sort(
+    (left, right) => new Date(left.date).getTime() - new Date(right.date).getTime()
+  );
 
-// ── Mini bar chart ─────────────────────────────────────
+  for (const record of sorted) {
+    const key =
+      period === "monthly"
+        ? getMonth(record.date)
+        : period === "quarterly"
+          ? `${getQuarter(record.date)} ${new Date(record.date).getFullYear()}`
+          : `${new Date(record.date).getFullYear()}`;
+
+    groups[key] ??= [];
+    groups[key].push(getValue(record));
+  }
+
+  return Object.entries(groups).map(([label, values]) => ({
+    label,
+    value: values.reduce((total, value) => total + value, 0),
+  }));
+}
+
 function BarChart({
   data,
   maxVal,
   color,
-  label,
+  formatValue,
 }: {
   data: { label: string; value: number }[];
   maxVal: number;
   color: string;
-  label: string;
+  formatValue?: (value: number) => string;
 }) {
+  if (data.length === 0) {
+    return (
+      <div className="mt-4 flex h-32 items-center justify-center rounded-xl border border-dashed border-stone-200 text-xs text-stone-400 dark:border-neutral-800 dark:text-neutral-500">
+        No chart data yet
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4">
-      <div className="flex items-end gap-2 h-32">
-        {data.map((d, i) => {
-          const pct = maxVal > 0 ? (d.value / maxVal) * 100 : 0;
+      <div className="flex h-32 items-end gap-2">
+        {data.map((item) => {
+          const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-              <div className="relative w-full flex items-end justify-center" style={{ height: "100px" }}>
-                {/* Tooltip */}
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-stone-900 dark:bg-white text-white dark:text-stone-900 text-[10px] font-medium px-2 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                  {label === "₦" ? formatCurrency(d.value) : d.value.toLocaleString()}
+            <div key={item.label} className="group flex flex-1 flex-col items-center gap-1.5">
+              <div className="relative flex w-full items-end justify-center" style={{ height: "100px" }}>
+                <div className="pointer-events-none absolute -top-8 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg bg-stone-900 px-2 py-1 text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-white dark:text-stone-900">
+                  {formatValue ? formatValue(item.value) : item.value.toLocaleString()}
                 </div>
                 <div
                   className={`w-full rounded-t-md transition-all ${color}`}
                   style={{ height: `${Math.max(pct, 2)}%` }}
                 />
               </div>
-              <p className="text-[10px] text-stone-400 dark:text-neutral-500 text-center truncate w-full">
-                {d.label}
+              <p className="w-full truncate text-center text-[10px] text-stone-400 dark:text-neutral-500">
+                {item.label}
               </p>
             </div>
           );
@@ -127,21 +113,33 @@ function BarChart({
   );
 }
 
-// ── Stat card ──────────────────────────────────────────
-function StatCard({ label, value, sub, trend, icon: Icon }: {
-  label: string; value: string; sub: string;
-  trend?: "up" | "down" | "neutral"; icon: React.ElementType;
+function StatCard({
+  label,
+  value,
+  sub,
+  trend,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  trend?: "up" | "down" | "neutral";
+  icon: ElementType;
 }) {
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-medium text-stone-500 dark:text-neutral-400 uppercase tracking-wide">{label}</p>
-        <div className="w-8 h-8 rounded-xl bg-stone-100 dark:bg-neutral-800 flex items-center justify-center">
+    <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+          {label}
+        </p>
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
           <Icon size={14} className="text-stone-500 dark:text-neutral-400" />
         </div>
       </div>
-      <p className="text-2xl font-semibold text-stone-900 dark:text-white tracking-tight">{value}</p>
-      <div className="flex items-center gap-1.5 mt-1">
+      <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
+        {value}
+      </p>
+      <div className="mt-1 flex items-center gap-1.5">
         {trend === "up" && <TrendingUp size={12} className="text-emerald-500" />}
         {trend === "down" && <TrendingDown size={12} className="text-red-400" />}
         <p className="text-xs text-stone-400 dark:text-neutral-500">{sub}</p>
@@ -150,31 +148,64 @@ function StatCard({ label, value, sub, trend, icon: Icon }: {
   );
 }
 
-// ── Row table ──────────────────────────────────────────
-function DataTable({ rows }: { rows: { date: string; serviceType: string; total: number; detail: string; extra?: string }[] }) {
+function DataTable({
+  rows,
+  extraHeader,
+}: {
+  rows: { date: string; serviceType: string; total: number; detail: string; extra?: string }[];
+  extraHeader?: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="px-5 py-10 text-center text-sm text-stone-400 dark:text-neutral-500">
+        No records yet
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-stone-100 dark:border-neutral-800">
-            <th className="text-left text-[11px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider px-5 py-3">Date</th>
-            <th className="text-left text-[11px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider px-4 py-3">Service type</th>
-            <th className="text-left text-[11px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider px-4 py-3">Total</th>
-            <th className="text-left text-[11px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider px-4 py-3">Breakdown</th>
-            {rows[0]?.extra !== undefined && (
-              <th className="text-left text-[11px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider px-4 py-3">First timers</th>
+            <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+              Date
+            </th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+              Service type
+            </th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+              Total
+            </th>
+            <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+              Breakdown
+            </th>
+            {extraHeader && (
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+                {extraHeader}
+              </th>
             )}
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-50 dark:divide-neutral-800/60">
-          {rows.map((r, i) => (
-            <tr key={i} className="hover:bg-stone-50 dark:hover:bg-neutral-800/40 transition-colors">
-              <td className="px-5 py-3 text-sm font-medium text-stone-800 dark:text-neutral-200 whitespace-nowrap">{r.date}</td>
-              <td className="px-4 py-3 text-sm text-stone-500 dark:text-neutral-400">{r.serviceType}</td>
-              <td className="px-4 py-3 text-sm font-semibold text-stone-900 dark:text-white">{r.total.toLocaleString()}</td>
-              <td className="px-4 py-3 text-xs text-stone-400 dark:text-neutral-500">{r.detail}</td>
-              {r.extra !== undefined && (
-                <td className="px-4 py-3 text-sm text-stone-500 dark:text-neutral-400">{r.extra}</td>
+          {rows.map((row) => (
+            <tr key={`${row.date}-${row.serviceType}`} className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40">
+              <td className="whitespace-nowrap px-5 py-3 text-sm font-medium text-stone-800 dark:text-neutral-200">
+                {row.date}
+              </td>
+              <td className="px-4 py-3 text-sm text-stone-500 dark:text-neutral-400">
+                {row.serviceType}
+              </td>
+              <td className="px-4 py-3 text-sm font-semibold text-stone-900 dark:text-white">
+                {row.total.toLocaleString()}
+              </td>
+              <td className="px-4 py-3 text-xs text-stone-400 dark:text-neutral-500">
+                {row.detail}
+              </td>
+              {extraHeader && (
+                <td className="px-4 py-3 text-sm text-stone-500 dark:text-neutral-400">
+                  {row.extra ?? "-"}
+                </td>
               )}
             </tr>
           ))}
@@ -184,266 +215,393 @@ function DataTable({ rows }: { rows: { date: string; serviceType: string; total:
   );
 }
 
-// ── Page ───────────────────────────────────────────────
 export default function AdminAnalyticsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState<View>("attendance");
   const [period, setPeriod] = useState<Period>("monthly");
   const [serviceTypeFilter, setServiceTypeFilter] = useState("all");
 
-  const serviceTypes = ["all", "Sunday Service", "Midweek Service", "Special Event"];
+  const { data, loading, error } = useQuery<{
+    me: GraphQLUser | null;
+    reports: GraphQLReport[];
+  }>(ADMIN_ANALYTICS_QUERY, {
+    fetchPolicy: "network-only",
+  });
 
-  // ── Attendance calcs ───────────────────────────────
-  const filteredAttendance = useMemo(() =>
-    ATTENDANCE_DATA.filter((r) => serviceTypeFilter === "all" || r.serviceType === serviceTypeFilter),
-    [serviceTypeFilter]
+  const me = data?.me ?? null;
+  const reports = data?.reports;
+  const sidebarUser = toSidebarUser(me);
+
+  const attendanceRecords = useMemo(() => buildAttendanceRecords(reports ?? []), [reports]);
+  const offeringRecords = useMemo(() => buildOfferingRecords(reports ?? []), [reports]);
+
+  const serviceTypes = useMemo(() => {
+    const values = new Set(
+      [...attendanceRecords, ...offeringRecords].map((record) => record.serviceType || "Other")
+    );
+
+    return ["all", ...Array.from(values).sort()];
+  }, [attendanceRecords, offeringRecords]);
+
+  const selectedServiceType = serviceTypes.includes(serviceTypeFilter) ? serviceTypeFilter : "all";
+
+  const filteredAttendance = useMemo(
+    () =>
+      attendanceRecords.filter(
+        (record) => selectedServiceType === "all" || record.serviceType === selectedServiceType
+      ),
+    [attendanceRecords, selectedServiceType]
   );
 
-  const totalAttendance = filteredAttendance.reduce((a, r) => a + r.male + r.female + r.children, 0);
+  const filteredOffering = useMemo(
+    () =>
+      offeringRecords.filter(
+        (record) => selectedServiceType === "all" || record.serviceType === selectedServiceType
+      ),
+    [offeringRecords, selectedServiceType]
+  );
+
+  const totalAttendance = filteredAttendance.reduce(
+    (total, record) => total + record.male + record.female + record.children,
+    0
+  );
   const avgAttendance = filteredAttendance.length
-    ? Math.round(totalAttendance / filteredAttendance.length) : 0;
-  const totalFirstTimers = filteredAttendance.reduce((a, r) => a + r.firstTimers, 0);
-  const peakAttendance = filteredAttendance.reduce((max, r) => {
-    const t = r.male + r.female + r.children;
-    return t > max ? t : max;
+    ? Math.round(totalAttendance / filteredAttendance.length)
+    : 0;
+  const totalFirstTimers = filteredAttendance.reduce(
+    (total, record) => total + record.firstTimers,
+    0
+  );
+  const peakAttendance = filteredAttendance.reduce((max, record) => {
+    const total = record.male + record.female + record.children;
+    return total > max ? total : max;
   }, 0);
 
-  // ── Offering calcs ─────────────────────────────────
-  const filteredOffering = useMemo(() =>
-    OFFERING_DATA.filter((r) => serviceTypeFilter === "all" || r.serviceType === serviceTypeFilter),
-    [serviceTypeFilter]
-  );
-
-  const totalCollected = filteredOffering.reduce((a, r) => a + r.collected, 0);
-  const totalBanked = filteredOffering.reduce((a, r) => a + r.banked, 0);
+  const totalCollected = filteredOffering.reduce((total, record) => total + record.collected, 0);
+  const totalBanked = filteredOffering.reduce((total, record) => total + record.banked, 0);
   const avgOffering = filteredOffering.length
-    ? Math.round(totalCollected / filteredOffering.length) : 0;
+    ? Math.round(totalCollected / filteredOffering.length)
+    : 0;
   const discrepancy = totalCollected - totalBanked;
 
-  // ── Group by period ────────────────────────────────
-  function groupByPeriod<T extends { date: string }>(data: T[], getValue: (r: T) => number) {
-    const groups: Record<string, number[]> = {};
-    data.forEach((r) => {
-      const key = period === "monthly" ? getMonth(r.date)
-        : period === "quarterly" ? `${getQuarter(r.date)} ${new Date(r.date).getFullYear()}`
-        : `${new Date(r.date).getFullYear()}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(getValue(r));
-    });
-    return Object.entries(groups).map(([label, vals]) => ({
-      label,
-      value: vals.reduce((a, b) => a + b, 0),
-    }));
-  }
+  const attendanceChartData = groupByPeriod(
+    filteredAttendance,
+    period,
+    (record) => record.male + record.female + record.children
+  );
+  const offeringChartData = groupByPeriod(filteredOffering, period, (record) => record.collected);
+  const attendanceMax = Math.max(...attendanceChartData.map((item) => item.value), 1);
+  const offeringMax = Math.max(...offeringChartData.map((item) => item.value), 1);
 
-  const attendanceChartData = groupByPeriod(filteredAttendance, (r) => r.male + r.female + r.children);
-  const offeringChartData = groupByPeriod(filteredOffering, (r) => r.collected);
-
-  const attendanceMax = Math.max(...attendanceChartData.map((d) => d.value), 1);
-  const offeringMax = Math.max(...offeringChartData.map((d) => d.value), 1);
-
-  const attendanceTableRows = filteredAttendance.map((r) => ({
-    date: formatDate(r.date),
-    serviceType: r.serviceType,
-    total: r.male + r.female + r.children,
-    detail: `${r.male}M · ${r.female}F · ${r.children}K`,
-    extra: String(r.firstTimers),
-  }));
-
-  const offeringTableRows = filteredOffering.map((r) => ({
-    date: formatDate(r.date),
-    serviceType: r.serviceType,
-    total: r.collected,
-    detail: `Banked: ${formatCurrency(r.banked)}${r.collected !== r.banked ? ` · Diff: ${formatCurrency(r.collected - r.banked)}` : ""}`,
+  const attendanceTableRows = filteredAttendance.map((record) => ({
+    date: formatDate(record.date),
+    serviceType: record.serviceType,
+    total: record.male + record.female + record.children,
+    detail: `${record.male}M / ${record.female}F / ${record.children} children`,
+    extra: String(record.firstTimers),
   }));
 
   return (
-    <div className="flex h-screen bg-stone-100 dark:bg-neutral-950 overflow-hidden">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={MOCK_USER} />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: MOCK_USER.name }} />
+    <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
 
-        <main className="flex-1 overflow-y-auto px-4 lg:px-8 py-6 fade-up">
-
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+        <main className="fade-up flex-1 overflow-y-auto px-4 py-6 lg:px-8">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-stone-900 dark:text-white tracking-tight">Analytics</h1>
-              <p className="text-sm text-stone-500 dark:text-neutral-400 mt-0.5">
-                Attendance and offering trends across all services
+              <h1 className="text-xl font-semibold tracking-tight text-stone-900 dark:text-white">
+                Analytics
+              </h1>
+              <p className="mt-0.5 text-sm text-stone-500 dark:text-neutral-400">
+                Attendance and offering trends from submitted reports
               </p>
             </div>
-            {/* Filters */}
-            <div className="flex items-center gap-2 flex-wrap">
+
+            <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
-                <Building2 size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-                <select value={serviceTypeFilter} onChange={(e) => setServiceTypeFilter(e.target.value)}
-                  className="pl-8 pr-7 py-1.5 text-xs rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-stone-900 dark:text-white outline-none appearance-none cursor-pointer focus:border-stone-400 dark:focus:border-neutral-500 transition-colors">
-                  {serviceTypes.map((s) => <option key={s} value={s}>{s === "all" ? "All service types" : s}</option>)}
+                <Building2 size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <select
+                  value={selectedServiceType}
+                  onChange={(event) => setServiceTypeFilter(event.target.value)}
+                  className="cursor-pointer appearance-none rounded-xl border border-stone-200 bg-white py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white dark:focus:border-neutral-500"
+                >
+                  {serviceTypes.map((serviceType) => (
+                    <option key={serviceType} value={serviceType}>
+                      {serviceType === "all" ? "All service types" : serviceType}
+                    </option>
+                  ))}
                 </select>
-                <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <ChevronDown size={11} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
               </div>
+
               <div className="relative">
-                <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
-                <select value={period} onChange={(e) => setPeriod(e.target.value as Period)}
-                  className="pl-8 pr-7 py-1.5 text-xs rounded-xl border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-stone-900 dark:text-white outline-none appearance-none cursor-pointer focus:border-stone-400 dark:focus:border-neutral-500 transition-colors">
+                <Calendar size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <select
+                  value={period}
+                  onChange={(event) => setPeriod(event.target.value as Period)}
+                  className="cursor-pointer appearance-none rounded-xl border border-stone-200 bg-white py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white dark:focus:border-neutral-500"
+                >
                   <option value="monthly">Monthly</option>
                   <option value="quarterly">Quarterly</option>
                   <option value="yearly">Yearly</option>
                 </select>
-                <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                <ChevronDown size={11} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
               </div>
             </div>
           </div>
 
-          {/* View tabs */}
-          <div className="flex items-center gap-1 mb-6 bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-1 w-fit">
+          {loading && (
+            <div className="mb-4 flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+              <Loader2 size={15} className="animate-spin" />
+              Loading analytics...
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-950/50 dark:bg-red-950/30 dark:text-red-300">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Could not load analytics. Refresh the page or sign in again.
+            </div>
+          )}
+
+          <div className="mb-6 flex w-fit items-center gap-1 rounded-2xl border border-stone-200 bg-white p-1 dark:border-neutral-800 dark:bg-neutral-900">
             {([
               { id: "attendance", label: "Attendance", icon: Users },
               { id: "offering", label: "Offering", icon: BarChart2 },
             ] as const).map((tab) => {
               const Icon = tab.icon;
               return (
-                <button key={tab.id} onClick={() => setView(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
-                    ${view === tab.id
-                      ? "bg-stone-900 dark:bg-white text-white dark:text-stone-900"
-                      : "text-stone-500 dark:text-neutral-400 hover:text-stone-900 dark:hover:text-white"
-                    }`}>
-                  <Icon size={14} />{tab.label}
+                <button
+                  key={tab.id}
+                  onClick={() => setView(tab.id)}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                    view === tab.id
+                      ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900"
+                      : "text-stone-500 hover:text-stone-900 dark:text-neutral-400 dark:hover:text-white"
+                  }`}
+                >
+                  <Icon size={14} />
+                  {tab.label}
                 </button>
               );
             })}
           </div>
 
-          {/* ── ATTENDANCE VIEW ── */}
           {view === "attendance" && (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <StatCard label="Total attendance" value={totalAttendance.toLocaleString()} sub="Across all services" trend="up" icon={Users} />
-                <StatCard label="Average per service" value={avgAttendance.toLocaleString()} sub="Per service" icon={TrendingUp} />
-                <StatCard label="Peak attendance" value={peakAttendance.toLocaleString()} sub="Single service high" icon={BarChart2} />
-                <StatCard label="First timers" value={totalFirstTimers.toLocaleString()} sub="New visitors" trend="up" icon={Users} />
+              <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <StatCard
+                  label="Total attendance"
+                  value={totalAttendance.toLocaleString()}
+                  sub="Across submitted services"
+                  trend={totalAttendance > 0 ? "up" : "neutral"}
+                  icon={Users}
+                />
+                <StatCard
+                  label="Average per service"
+                  value={avgAttendance.toLocaleString()}
+                  sub="Per attendance report"
+                  icon={TrendingUp}
+                />
+                <StatCard
+                  label="Peak attendance"
+                  value={peakAttendance.toLocaleString()}
+                  sub="Single service high"
+                  icon={BarChart2}
+                />
+                <StatCard
+                  label="First timers"
+                  value={totalFirstTimers.toLocaleString()}
+                  sub="New visitors"
+                  trend={totalFirstTimers > 0 ? "up" : "neutral"}
+                  icon={Users}
+                />
               </div>
 
-              {/* Chart */}
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">Total attendance by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}</h2>
+              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mb-1 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                    Total attendance by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
+                  </h2>
                 </div>
-                <p className="text-xs text-stone-400 dark:text-neutral-500 mb-2">Male + Female + Children</p>
-                <BarChart data={attendanceChartData} maxVal={attendanceMax} color="bg-stone-800 dark:bg-stone-300" label="" />
+                <p className="mb-2 text-xs text-stone-400 dark:text-neutral-500">
+                  Male + female + children
+                </p>
+                <BarChart
+                  data={attendanceChartData}
+                  maxVal={attendanceMax}
+                  color="bg-stone-800 dark:bg-stone-300"
+                />
               </div>
 
-              {/* Gender breakdown */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {[
-                  { label: "Male adults", val: filteredAttendance.reduce((a, r) => a + r.male, 0), color: "text-stone-900 dark:text-white" },
-                  { label: "Female adults", val: filteredAttendance.reduce((a, r) => a + r.female, 0), color: "text-stone-900 dark:text-white" },
-                  { label: "Children", val: filteredAttendance.reduce((a, r) => a + r.children, 0), color: "text-stone-900 dark:text-white" },
+                  { label: "Male adults", value: filteredAttendance.reduce((total, record) => total + record.male, 0) },
+                  { label: "Female adults", value: filteredAttendance.reduce((total, record) => total + record.female, 0) },
+                  { label: "Children", value: filteredAttendance.reduce((total, record) => total + record.children, 0) },
                 ].map((item) => (
-                  <div key={item.label} className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl px-5 py-4">
-                    <p className="text-xs text-stone-400 dark:text-neutral-500 mb-1">{item.label}</p>
-                    <p className={`text-2xl font-semibold tracking-tight ${item.color}`}>{item.val.toLocaleString()}</p>
-                    <p className="text-xs text-stone-400 dark:text-neutral-500 mt-1">
-                      {totalAttendance > 0 ? Math.round((item.val / totalAttendance) * 100) : 0}% of total
+                  <div
+                    key={item.label}
+                    className="rounded-2xl border border-stone-200 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-900"
+                  >
+                    <p className="mb-1 text-xs text-stone-400 dark:text-neutral-500">{item.label}</p>
+                    <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
+                      {item.value.toLocaleString()}
+                    </p>
+                    <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
+                      {totalAttendance > 0 ? Math.round((item.value / totalAttendance) * 100) : 0}% of total
                     </p>
                   </div>
                 ))}
               </div>
 
-              {/* Raw table */}
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-stone-100 dark:border-neutral-800">
-                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">Attendance records</h2>
+              <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="border-b border-stone-100 px-5 py-4 dark:border-neutral-800">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                    Attendance records
+                  </h2>
                 </div>
-                <DataTable rows={attendanceTableRows} />
-                <div className="px-5 py-3 border-t border-stone-100 dark:border-neutral-800">
-                  <p className="text-xs text-stone-400 dark:text-neutral-500">{filteredAttendance.length} services</p>
+                <DataTable rows={attendanceTableRows} extraHeader="First timers" />
+                <div className="border-t border-stone-100 px-5 py-3 dark:border-neutral-800">
+                  <p className="text-xs text-stone-400 dark:text-neutral-500">
+                    {filteredAttendance.length} services
+                  </p>
                 </div>
               </div>
             </>
           )}
 
-          {/* ── OFFERING VIEW ── */}
           {view === "offering" && (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <StatCard label="Total collected" value={formatCurrency(totalCollected)} sub="All services" trend="up" icon={BarChart2} />
-                <StatCard label="Total banked" value={formatCurrency(totalBanked)} sub="Confirmed by finance" icon={TrendingUp} />
-                <StatCard label="Average per service" value={formatCurrency(avgOffering)} sub="Per service" icon={BarChart2} />
+              <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <StatCard
+                  label="Total collected"
+                  value={formatCurrency(totalCollected)}
+                  sub="Ushering and finance reports"
+                  trend={totalCollected > 0 ? "up" : "neutral"}
+                  icon={BarChart2}
+                />
+                <StatCard
+                  label="Total banked"
+                  value={formatCurrency(totalBanked)}
+                  sub="Confirmed by finance"
+                  icon={TrendingUp}
+                />
+                <StatCard
+                  label="Average per service"
+                  value={formatCurrency(avgOffering)}
+                  sub="Per offering record"
+                  icon={BarChart2}
+                />
                 <StatCard
                   label="Discrepancy"
                   value={formatCurrency(discrepancy)}
-                  sub={discrepancy === 0 ? "All balanced" : "Unreconciled amount"}
+                  sub={discrepancy === 0 ? "All balanced" : "Needs reconciliation"}
                   trend={discrepancy === 0 ? "neutral" : "down"}
                   icon={TrendingDown}
                 />
               </div>
 
-              {/* Chart */}
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl p-6 mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">Offering collected by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}</h2>
+              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mb-1 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                    Offering collected by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
+                  </h2>
                 </div>
-                <p className="text-xs text-stone-400 dark:text-neutral-500 mb-2">Total offering collected (₦)</p>
-                <BarChart data={offeringChartData} maxVal={offeringMax} color="bg-amber-500 dark:bg-amber-400" label="₦" />
+                <p className="mb-2 text-xs text-stone-400 dark:text-neutral-500">
+                  Total offering collected
+                </p>
+                <BarChart
+                  data={offeringChartData}
+                  maxVal={offeringMax}
+                  color="bg-amber-500 dark:bg-amber-400"
+                  formatValue={formatCurrency}
+                />
               </div>
 
-              {/* Ushering vs Finance note */}
-              <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-2xl px-5 py-4 mb-4">
-                <BarChart2 size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <BarChart2 size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <div>
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-1">Two-source offering tracking</p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                    <strong>Ushering Unit</strong> records what was collected at the service.
-                    <strong> Finance Unit</strong> records what was banked. Any discrepancy between both figures is flagged here for reconciliation.
+                  <p className="mb-1 text-sm font-medium text-amber-800 dark:text-amber-300">
+                    Two-source offering tracking
+                  </p>
+                  <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                    Ushering records what was collected. Finance records what was banked. Differences are shown for reconciliation.
                   </p>
                 </div>
               </div>
 
-              {/* Raw table */}
-              <div className="bg-white dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-stone-100 dark:border-neutral-800">
-                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">Offering records</h2>
+              <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="border-b border-stone-100 px-5 py-4 dark:border-neutral-800">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                    Offering records
+                  </h2>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-stone-100 dark:border-neutral-800">
-                        {["Date", "Service type", "Collected (Ushering)", "Banked (Finance)", "Difference"].map((h) => (
-                          <th key={h} className="text-left text-[11px] font-semibold text-stone-400 dark:text-neutral-500 uppercase tracking-wider px-4 py-3 first:px-5">{h}</th>
+                        {["Date", "Service type", "Collected", "Banked", "Difference"].map((heading) => (
+                          <th
+                            key={heading}
+                            className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 first:px-5 dark:text-neutral-500"
+                          >
+                            {heading}
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-50 dark:divide-neutral-800/60">
-                      {filteredOffering.map((r, i) => {
-                        const diff = r.collected - r.banked;
-                        return (
-                          <tr key={i} className="hover:bg-stone-50 dark:hover:bg-neutral-800/40 transition-colors">
-                            <td className="px-5 py-3 text-sm font-medium text-stone-800 dark:text-neutral-200 whitespace-nowrap">{formatDate(r.date)}</td>
-                            <td className="px-4 py-3 text-sm text-stone-500 dark:text-neutral-400">{r.serviceType}</td>
-                            <td className="px-4 py-3 text-sm font-semibold text-stone-900 dark:text-white">{formatCurrency(r.collected)}</td>
-                            <td className="px-4 py-3 text-sm text-stone-700 dark:text-neutral-300">{formatCurrency(r.banked)}</td>
-                            <td className="px-4 py-3">
-                              {diff === 0 ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
-                                  Balanced
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400">
-                                  {formatCurrency(diff)}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {filteredOffering.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-5 py-10 text-center text-sm text-stone-400 dark:text-neutral-500">
+                            No offering records yet
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredOffering.map((record) => {
+                          const diff = record.collected - record.banked;
+
+                          return (
+                            <tr
+                              key={`${record.date}-${record.serviceType}`}
+                              className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40"
+                            >
+                              <td className="whitespace-nowrap px-5 py-3 text-sm font-medium text-stone-800 dark:text-neutral-200">
+                                {formatDate(record.date)}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-stone-500 dark:text-neutral-400">
+                                {record.serviceType}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-semibold text-stone-900 dark:text-white">
+                                {formatCurrency(record.collected)}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-stone-700 dark:text-neutral-300">
+                                {formatCurrency(record.banked)}
+                              </td>
+                              <td className="px-4 py-3">
+                                {diff === 0 ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                                    Balanced
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-950/50 dark:text-red-400">
+                                    {formatCurrency(diff)}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
-                <div className="px-5 py-3 border-t border-stone-100 dark:border-neutral-800">
-                  <p className="text-xs text-stone-400 dark:text-neutral-500">{filteredOffering.length} records</p>
+                <div className="border-t border-stone-100 px-5 py-3 dark:border-neutral-800">
+                  <p className="text-xs text-stone-400 dark:text-neutral-500">
+                    {filteredOffering.length} records
+                  </p>
                 </div>
               </div>
             </>
