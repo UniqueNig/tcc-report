@@ -79,7 +79,7 @@ function BarChart({
   color: string;
   formatValue?: (value: number) => string;
 }) {
-  if (data.length === 0) {
+  if (data.length === 0 || data.every((item) => item.value === 0)) {
     return (
       <div className="mt-4 flex h-32 items-center justify-center rounded-xl border border-dashed border-stone-200 text-xs text-stone-400 dark:border-neutral-800 dark:text-neutral-500">
         No chart data yet
@@ -92,6 +92,7 @@ function BarChart({
       <div className="flex h-32 items-end gap-2">
         {data.map((item) => {
           const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+          const height = item.value > 0 ? Math.max(pct, 2) : 0;
 
           return (
             <div key={item.label} className="group flex flex-1 flex-col items-center gap-1.5">
@@ -101,7 +102,7 @@ function BarChart({
                 </div>
                 <div
                   className={`w-full rounded-t-md transition-all ${color}`}
-                  style={{ height: `${Math.max(pct, 2)}%` }}
+                  style={{ height: `${height}%` }}
                 />
               </div>
               <p className="w-full truncate text-center text-[10px] text-stone-400 dark:text-neutral-500">
@@ -138,7 +139,7 @@ function StatCard({
           <Icon size={14} className="text-stone-500 dark:text-neutral-400" />
         </div>
       </div>
-      <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
+      <p className="break-words text-2xl font-semibold leading-tight tracking-tight text-stone-900 dark:text-white">
         {value}
       </p>
       <div className="mt-1 flex items-center gap-1.5">
@@ -287,7 +288,15 @@ export default function AdminAnalyticsPage() {
     (total, record) => total + record.directIncome,
     0
   );
-  const discrepancy = totalCollected - totalBanked;
+  const totalExpenditure = filteredOffering.reduce(
+    (total, record) => total + record.expenditure,
+    0
+  );
+  const netBalance = totalCollected - totalExpenditure;
+  const expenditureShare = totalCollected > 0
+    ? Math.round((totalExpenditure / totalCollected) * 100)
+    : 0;
+  const depositVariance = totalCollected - totalBanked;
 
   const attendanceChartData = groupByPeriod(
     filteredAttendance,
@@ -295,8 +304,14 @@ export default function AdminAnalyticsPage() {
     (record) => record.male + record.female + record.children
   );
   const offeringChartData = groupByPeriod(filteredOffering, period, (record) => record.collected);
+  const expenditureChartData = groupByPeriod(
+    filteredOffering,
+    period,
+    (record) => record.expenditure
+  );
   const attendanceMax = Math.max(...attendanceChartData.map((item) => item.value), 1);
   const offeringMax = Math.max(...offeringChartData.map((item) => item.value), 1);
+  const expenditureMax = Math.max(...expenditureChartData.map((item) => item.value), 1);
 
   const attendanceTableRows = filteredAttendance.map((record) => ({
     id: record.id,
@@ -504,7 +519,7 @@ export default function AdminAnalyticsPage() {
 
           {view === "offering" && (
             <>
-              <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                 <StatCard
                   label="Total income"
                   value={formatCurrency(totalCollected)}
@@ -513,9 +528,27 @@ export default function AdminAnalyticsPage() {
                   icon={BarChart2}
                 />
                 <StatCard
+                  label="Expenditure"
+                  value={formatCurrency(totalExpenditure)}
+                  sub={
+                    totalCollected > 0
+                      ? `${expenditureShare}% of tracked income`
+                      : "From finance reports"
+                  }
+                  trend={totalExpenditure > 0 ? "down" : "neutral"}
+                  icon={TrendingDown}
+                />
+                <StatCard
+                  label="Net balance"
+                  value={formatCurrency(netBalance)}
+                  sub="After tracked expenditure"
+                  trend={netBalance >= 0 ? "up" : "down"}
+                  icon={TrendingUp}
+                />
+                <StatCard
                   label="Banked/deposited"
                   value={formatCurrency(totalBanked)}
-                  sub="Confirmed by finance"
+                  sub="Deposits recorded by finance"
                   icon={TrendingUp}
                 />
                 <StatCard
@@ -525,39 +558,62 @@ export default function AdminAnalyticsPage() {
                   icon={BarChart2}
                 />
                 <StatCard
-                  label="Discrepancy"
-                  value={formatCurrency(discrepancy)}
-                  sub={discrepancy === 0 ? "All balanced" : "Needs reconciliation"}
-                  trend={discrepancy === 0 ? "neutral" : "down"}
+                  label="Deposit variance"
+                  value={formatCurrency(depositVariance)}
+                  sub={
+                    depositVariance === 0
+                      ? "Income matches deposits"
+                      : "Income compared with deposits"
+                  }
+                  trend={depositVariance === 0 ? "neutral" : "down"}
                   icon={TrendingDown}
                 />
               </div>
 
-              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-                <div className="mb-1 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
-                    Finance income by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
-                  </h2>
+              <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="mb-1 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                      Income by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
+                    </h2>
+                  </div>
+                  <p className="mb-2 text-xs text-stone-400 dark:text-neutral-500">
+                    Offering + tithe + seed envelopes + direct non-usher income
+                  </p>
+                  <BarChart
+                    data={offeringChartData}
+                    maxVal={offeringMax}
+                    color="bg-amber-500 dark:bg-amber-400"
+                    formatValue={formatCurrency}
+                  />
                 </div>
-                <p className="mb-2 text-xs text-stone-400 dark:text-neutral-500">
-                  Offering + tithe + seed envelopes + direct non-usher income
-                </p>
-                <BarChart
-                  data={offeringChartData}
-                  maxVal={offeringMax}
-                  color="bg-amber-500 dark:bg-amber-400"
-                  formatValue={formatCurrency}
-                />
+
+                <div className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="mb-1 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                      Expenditure by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
+                    </h2>
+                  </div>
+                  <p className="mb-2 text-xs text-stone-400 dark:text-neutral-500">
+                    Finance Unit expenditure entries
+                  </p>
+                  <BarChart
+                    data={expenditureChartData}
+                    maxVal={expenditureMax}
+                    color="bg-red-400 dark:bg-red-500"
+                    formatValue={formatCurrency}
+                  />
+                </div>
               </div>
 
               <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4 dark:border-amber-900/50 dark:bg-amber-950/20">
                 <BarChart2 size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <div>
                   <p className="mb-1 text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Separated finance tracking
+                    Finance reconciliation
                   </p>
                   <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-                    Ushers record each envelope they hand over. Finance confirms those same categories and records direct income that never passes through ushers.
+                    Ushers record envelope handovers. Finance confirms those categories, records direct income, adds expenditure, and keeps deposit variance separate from net balance.
                   </p>
                 </div>
               </div>
@@ -572,7 +628,17 @@ export default function AdminAnalyticsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-stone-100 dark:border-neutral-800">
-                        {["Date", "Service type", "Total income", "Envelope breakdown", "Direct income", "Banked", "Difference"].map((heading) => (
+                        {[
+                          "Date",
+                          "Service type",
+                          "Total income",
+                          "Expenditure",
+                          "Net",
+                          "Envelope breakdown",
+                          "Direct income",
+                          "Banked",
+                          "Deposit variance",
+                        ].map((heading) => (
                           <th
                             key={heading}
                             className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 first:px-5 dark:text-neutral-500"
@@ -585,13 +651,14 @@ export default function AdminAnalyticsPage() {
                     <tbody className="divide-y divide-stone-50 dark:divide-neutral-800/60">
                       {filteredOffering.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-5 py-10 text-center text-sm text-stone-400 dark:text-neutral-500">
+                          <td colSpan={9} className="px-5 py-10 text-center text-sm text-stone-400 dark:text-neutral-500">
                             No finance records yet
                           </td>
                         </tr>
                       ) : (
                         paginatedOffering.map((record) => {
-                          const diff = record.collected - record.banked;
+                          const variance = record.collected - record.banked;
+                          const recordNet = record.collected - record.expenditure;
 
                           return (
                             <tr
@@ -606,6 +673,25 @@ export default function AdminAnalyticsPage() {
                               </td>
                               <td className="px-4 py-3 text-sm font-semibold text-stone-900 dark:text-white">
                                 {formatCurrency(record.collected)}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-stone-500 dark:text-neutral-400">
+                                <p className="font-semibold text-red-500 dark:text-red-400">
+                                  {formatCurrency(record.expenditure)}
+                                </p>
+                                {record.expenditureNotes && (
+                                  <p className="mt-1 max-w-xs text-[11px] text-stone-400 dark:text-neutral-500">
+                                    {record.expenditureNotes}
+                                  </p>
+                                )}
+                              </td>
+                              <td
+                                className={`px-4 py-3 text-sm font-semibold ${
+                                  recordNet < 0
+                                    ? "text-red-600 dark:text-red-400"
+                                    : "text-stone-900 dark:text-white"
+                                }`}
+                              >
+                                {formatCurrency(recordNet)}
                               </td>
                               <td className="px-4 py-3 text-xs text-stone-500 dark:text-neutral-400">
                                 <p>Offering: {formatCurrency(record.offeringCollected)}</p>
@@ -630,13 +716,13 @@ export default function AdminAnalyticsPage() {
                                 {formatCurrency(record.banked)}
                               </td>
                               <td className="px-4 py-3">
-                                {diff === 0 ? (
+                                {variance === 0 ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
                                     Balanced
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-950/50 dark:text-red-400">
-                                    {formatCurrency(diff)}
+                                    {formatCurrency(variance)}
                                   </span>
                                 )}
                               </td>

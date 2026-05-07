@@ -78,6 +78,14 @@ function normalizeFieldValue(field: UnitField, value: FieldValue | ""): FieldVal
   return typeof value === "string" ? value : "";
 }
 
+function getNumberValue(value: FieldValue | "") {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function hasTextContent(value: FieldValue | "") {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function FieldRenderer({
   field,
   value,
@@ -305,6 +313,60 @@ export default function SubmitReportPage() {
         if (field.type === "multiselect" && Array.isArray(value) && value.length === 0) {
           nextErrors[field.id] = "Please select at least one option";
         }
+      }
+    }
+
+    const conditionalChecks = [
+      {
+        fieldId: "otherIncomeSource",
+        isRequired: getNumberValue(formValues.otherIncomeReceived) > 0,
+        message: "Describe the other direct income source",
+      },
+      {
+        fieldId: "expenditureNotes",
+        isRequired: getNumberValue(formValues.expenditure) > 0,
+        message: "Add expenditure notes when expenditure is recorded",
+      },
+      {
+        fieldId: "discrepancyDetails",
+        isRequired: formValues.discrepancies === true,
+        message: "Explain the finance discrepancy",
+      },
+      {
+        fieldId: "streamQualityDetails",
+        isRequired: formValues.streamQualityIssues === true,
+        message: "Describe the stream quality issue",
+      },
+      {
+        fieldId: "equipmentDetails",
+        isRequired: formValues.equipmentIssues === true,
+        message: "Describe the equipment issue",
+      },
+      {
+        fieldId: "guestDetails",
+        isRequired: formValues.guestsHandled === true,
+        message: "Add guest details for the protocol report",
+      },
+      {
+        fieldId: "incidentDetails",
+        isRequired: formValues.incidentsOccurred === true,
+        message: "Describe the incident that occurred",
+      },
+      {
+        fieldId: "hospitalisedDetails",
+        isRequired: getNumberValue(formValues.hospitalisedMembers) > 0,
+        message: "Add details for the hospitalised or bereaved member entry",
+      },
+      {
+        fieldId: "cellMeetingNotes",
+        isRequired: formValues.cellMeetingHeld === true,
+        message: "Add the cell meeting notes",
+      },
+    ];
+
+    for (const check of conditionalChecks) {
+      if (check.isRequired && !hasTextContent(formValues[check.fieldId])) {
+        nextErrors[check.fieldId] = check.message;
       }
     }
 

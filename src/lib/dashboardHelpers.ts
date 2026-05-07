@@ -115,9 +115,11 @@ export interface OfferingRecord {
   financeHandoverTotal: number;
   otherIncomeReceived: number;
   directIncome: number;
+  expenditure: number;
   collected: number;
   banked: number;
   otherIncomeSource: string;
+  expenditureNotes: string;
 }
 
 export function formatDate(iso: string) {
@@ -148,7 +150,10 @@ export function formatDateTime(iso: string) {
 }
 
 export function formatCurrency(amount: number) {
-  return `NGN ${amount.toLocaleString("en-NG")}`;
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  const sign = safeAmount < 0 ? "-" : "";
+
+  return `${sign}NGN ${Math.abs(safeAmount).toLocaleString("en-NG")}`;
 }
 
 export function getInitials(name: string) {
@@ -187,6 +192,23 @@ export function findField(report: GraphQLReport, fieldId: string): GraphQLField 
   return null;
 }
 
+export function coerceNumberValue(value: GraphQLField["value"]) {
+  if (value == null || value === "") {
+    return 0;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").replace(/[^\d.-]/g, "");
+    return Number(normalized) || 0;
+  }
+
+  return Number(value) || 0;
+}
+
 export function getFieldString(report: GraphQLReport, fieldId: string, fallback = "") {
   const field = findField(report, fieldId);
   if (!field || field.value == null) {
@@ -202,11 +224,11 @@ export function getFieldString(report: GraphQLReport, fieldId: string, fallback 
 
 export function getFieldNumber(report: GraphQLReport, fieldId: string) {
   const field = findField(report, fieldId);
-  if (!field || field.value == null || field.value === "") {
+  if (!field) {
     return 0;
   }
 
-  return Number(field.value) || 0;
+  return coerceNumberValue(field.value);
 }
 
 export function getServiceType(report: GraphQLReport) {
@@ -267,9 +289,11 @@ export function buildOfferingRecords(reports: GraphQLReport[]): OfferingRecord[]
       financeHandoverTotal: 0,
       otherIncomeReceived: 0,
       directIncome: 0,
+      expenditure: 0,
       collected: 0,
       banked: 0,
       otherIncomeSource: "",
+      expenditureNotes: "",
     };
 
     if (new Date(report.createdAt).getTime() < new Date(current.date).getTime()) {
@@ -286,6 +310,8 @@ export function buildOfferingRecords(reports: GraphQLReport[]): OfferingRecord[]
     const specialSeedReceived = getFieldNumber(report, "specialSeedReceived");
     const otherIncomeReceived = getFieldNumber(report, "otherIncomeReceived");
     const otherIncomeSource = getFieldString(report, "otherIncomeSource").trim();
+    const expenditure = getFieldNumber(report, "expenditure");
+    const expenditureNotes = getFieldString(report, "expenditureNotes").trim();
 
     if (usheringCollected > 0) {
       current.usheringCollected = Math.max(current.usheringCollected, usheringCollected);
@@ -319,6 +345,16 @@ export function buildOfferingRecords(reports: GraphQLReport[]): OfferingRecord[]
       current.otherIncomeSource = current.otherIncomeSource
         ? `${current.otherIncomeSource}; ${otherIncomeSource}`
         : otherIncomeSource;
+    }
+
+    if (expenditure > 0) {
+      current.expenditure = Math.max(current.expenditure, expenditure);
+    }
+
+    if (expenditureNotes && !current.expenditureNotes.includes(expenditureNotes)) {
+      current.expenditureNotes = current.expenditureNotes
+        ? `${current.expenditureNotes}; ${expenditureNotes}`
+        : expenditureNotes;
     }
 
     const bankedAmount = totalIncomeBanked > 0 ? totalIncomeBanked : financeBanked;
@@ -355,5 +391,7 @@ export function buildOfferingRecords(reports: GraphQLReport[]): OfferingRecord[]
     keyed[key] = current;
   }
 
-  return Object.values(keyed).filter((record) => record.collected || record.banked);
+  return Object.values(keyed)
+    .filter((record) => record.collected || record.banked || record.expenditure)
+    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
 }

@@ -19,6 +19,9 @@ import Topbar from "@/src/components/Topbar";
 import ReportStatusPill from "@/src/components/reports/ReportStatusPill";
 import { ADMIN_DASHBOARD_QUERY } from "@/src/lib/graphqlDocuments";
 import {
+  buildAttendanceRecords,
+  buildOfferingRecords,
+  formatCurrency,
   formatDate,
   getInitials,
   isWithinLastDays,
@@ -90,6 +93,18 @@ export default function AdminDashboard() {
   const reviewedCount = reports.filter((report) => report.status === "reviewed").length;
   const thisWeekReports = reports.filter((report) => isWithinLastDays(report.createdAt, 7)).length;
   const latestReports = useMemo(() => sortReportsNewest(reports).slice(0, 5), [reports]);
+  const attendanceRecords = useMemo(() => buildAttendanceRecords(reports), [reports]);
+  const offeringRecords = useMemo(() => buildOfferingRecords(reports), [reports]);
+  const totalAttendance = attendanceRecords.reduce(
+    (total, record) => total + record.male + record.female + record.children,
+    0
+  );
+  const totalIncome = offeringRecords.reduce((total, record) => total + record.collected, 0);
+  const totalExpenditure = offeringRecords.reduce(
+    (total, record) => total + record.expenditure,
+    0
+  );
+  const netBalance = totalIncome - totalExpenditure;
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
@@ -176,6 +191,70 @@ export default function AdminDashboard() {
                 </p>
                 <p className="text-xs text-stone-400 dark:text-neutral-500">Still pending</p>
               </div>
+            </div>
+          </div>
+
+          <div className="mb-8 overflow-hidden rounded-2xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4 dark:border-neutral-800">
+              <div>
+                <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
+                  Attendance and finance snapshot
+                </h2>
+                <p className="mt-0.5 text-xs text-stone-400 dark:text-neutral-500">
+                  Live totals from submitted unit reports
+                </p>
+              </div>
+              <Link
+                href="/dashboard/admin/analytics"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 transition-colors hover:text-stone-900 dark:text-neutral-400 dark:hover:text-white"
+              >
+                Open analytics
+                <ArrowRight size={12} />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 gap-px bg-stone-100 dark:bg-neutral-800 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                {
+                  label: "Attendance",
+                  value: totalAttendance.toLocaleString(),
+                  sub: "Tracked across ushering reports",
+                  tone: "text-stone-900 dark:text-white",
+                },
+                {
+                  label: "Income",
+                  value: formatCurrency(totalIncome),
+                  sub: "Offering, tithes, seeds, and direct income",
+                  tone: "text-stone-900 dark:text-white",
+                },
+                {
+                  label: "Expenditure",
+                  value: formatCurrency(totalExpenditure),
+                  sub: "Finance unit spending entries",
+                  tone: "text-red-600 dark:text-red-400",
+                },
+                {
+                  label: "Net balance",
+                  value: formatCurrency(netBalance),
+                  sub: "Income after tracked expenditure",
+                  tone:
+                    netBalance < 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-stone-900 dark:text-white",
+                },
+              ].map((item) => (
+                <div key={item.label} className="bg-white px-5 py-4 dark:bg-neutral-900">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 dark:text-neutral-500">
+                    {item.label}
+                  </p>
+                  <p className={`mt-1 text-2xl font-semibold tracking-tight ${item.tone}`}>
+                    {item.value}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
+                    {item.sub}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { CheckCircle2, Clock } from "lucide-react";
-import type { GraphQLField } from "@/src/lib/dashboardHelpers";
+import {
+  coerceNumberValue,
+  formatCurrency,
+  type GraphQLField,
+} from "@/src/lib/dashboardHelpers";
 
 export default function ReportFieldValue({ field }: { field: GraphQLField }) {
   if (field.type === "boolean") {
@@ -41,7 +45,7 @@ export default function ReportFieldValue({ field }: { field: GraphQLField }) {
   if (field.type === "currency") {
     return (
       <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
-        NGN {Number(field.value ?? 0).toLocaleString("en-NG")}
+        {formatCurrency(coerceNumberValue(field.value))}
       </p>
     );
   }
@@ -49,7 +53,7 @@ export default function ReportFieldValue({ field }: { field: GraphQLField }) {
   if (field.type === "number") {
     return (
       <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
-        {Number(field.value ?? 0).toLocaleString()}
+        {coerceNumberValue(field.value).toLocaleString()}
       </p>
     );
   }
