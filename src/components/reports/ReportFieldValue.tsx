@@ -33,7 +33,7 @@ export default function ReportFieldValue({ field }: { field: GraphQLField }) {
         {values.map((value) => (
           <span
             key={value}
-            className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700 dark:bg-neutral-800 dark:text-neutral-300"
+            className="max-w-full break-words rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700 dark:bg-neutral-800 dark:text-neutral-300"
           >
             {value}
           </span>
@@ -44,7 +44,7 @@ export default function ReportFieldValue({ field }: { field: GraphQLField }) {
 
   if (field.type === "currency") {
     return (
-      <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
+      <p className="mx-auto max-w-full break-words text-xl font-semibold leading-tight tracking-tight text-stone-900 dark:text-white sm:text-2xl">
         {formatCurrency(coerceNumberValue(field.value))}
       </p>
     );
@@ -52,7 +52,7 @@ export default function ReportFieldValue({ field }: { field: GraphQLField }) {
 
   if (field.type === "number") {
     return (
-      <p className="text-2xl font-semibold tracking-tight text-stone-900 dark:text-white">
+      <p className="mx-auto max-w-full break-words text-xl font-semibold leading-tight tracking-tight text-stone-900 dark:text-white sm:text-2xl">
         {coerceNumberValue(field.value).toLocaleString()}
       </p>
     );
@@ -60,14 +60,14 @@ export default function ReportFieldValue({ field }: { field: GraphQLField }) {
 
   if (field.type === "textarea") {
     return (
-      <p className="whitespace-pre-line text-sm leading-relaxed text-stone-700 dark:text-neutral-300">
+      <p className="whitespace-pre-line break-words text-sm leading-relaxed text-stone-700 dark:text-neutral-300">
         {String(field.value ?? "")}
       </p>
     );
   }
 
   return (
-    <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">
+    <p className="break-words text-sm font-medium text-stone-800 dark:text-neutral-200">
       {String(field.value ?? "")}
     </p>
   );

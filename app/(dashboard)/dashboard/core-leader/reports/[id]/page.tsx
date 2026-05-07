@@ -163,9 +163,9 @@ export default function CoreLeaderReportReview() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
 
-        <main className="fade-up flex-1 overflow-y-auto px-4 py-6 lg:px-8">
+        <main className="fade-up flex-1 overflow-y-auto px-3 py-6 sm:px-4 lg:px-8">
           {toast && (
-            <div className="fixed right-4 top-4 z-50 flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="fixed left-4 right-4 top-4 z-50 flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 sm:left-auto">
               <CheckCircle2 size={15} className="shrink-0 text-emerald-500" />
               <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">{toast}</p>
             </div>
@@ -186,7 +186,7 @@ export default function CoreLeaderReportReview() {
               </p>
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl">
+            <div className="mx-auto w-full max-w-3xl">
               <Link
                 href="/dashboard/core-leader/reports"
                 className="mb-5 inline-flex items-center gap-1.5 text-xs text-stone-400 transition-colors hover:text-stone-700 dark:text-neutral-500 dark:hover:text-neutral-200"
@@ -196,18 +196,18 @@ export default function CoreLeaderReportReview() {
               </Link>
 
               <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h1 className="text-xl font-semibold leading-snug tracking-tight text-stone-900 dark:text-white">
+                <div className="min-w-0 flex-1">
+                  <h1 className="break-words text-xl font-semibold leading-snug tracking-tight text-stone-900 dark:text-white">
                     {report.title}
                   </h1>
-                  <p className="mt-1 text-sm text-stone-400 dark:text-neutral-500">
+                  <p className="mt-1 break-words text-sm text-stone-400 dark:text-neutral-500">
                     Report #{report.id}
                   </p>
                 </div>
                 <ReportStatusPill status={report.status} />
               </div>
 
-              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-4 rounded-xl border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:p-6">
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   {[
                     {
@@ -234,15 +234,15 @@ export default function CoreLeaderReportReview() {
                           : "Awaiting your review",
                     },
                   ].map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="flex items-start gap-3">
+                    <div key={label} className="flex min-w-0 items-start gap-3">
                       <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-stone-100 dark:bg-neutral-800">
                         <Icon size={13} className="text-stone-500 dark:text-neutral-400" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                           {label}
                         </p>
-                        <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">
+                        <p className="break-words text-sm font-medium text-stone-800 dark:text-neutral-200">
                           {value}
                         </p>
                       </div>
@@ -251,8 +251,8 @@ export default function CoreLeaderReportReview() {
                 </div>
 
                 {report.status === "pending" && (
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-stone-100 pt-5 dark:border-neutral-800">
-                    <div>
+                  <div className="mt-5 flex flex-col gap-4 border-t border-stone-100 pt-5 dark:border-neutral-800 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">
                         Ready to mark this report as reviewed?
                       </p>
@@ -263,7 +263,7 @@ export default function CoreLeaderReportReview() {
                     <button
                       onClick={() => void handleMarkReviewed()}
                       disabled={isMarkingReviewed}
-                      className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                     >
                       {isMarkingReviewed ? (
                         <>
@@ -282,7 +282,7 @@ export default function CoreLeaderReportReview() {
               </div>
 
               {report.attachmentName && (
-                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:px-5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
                     <Paperclip size={15} className="text-stone-500 dark:text-neutral-400" />
                   </div>
@@ -298,7 +298,7 @@ export default function CoreLeaderReportReview() {
                     <a
                       href={report.attachmentUrl}
                       download={report.attachmentName}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                      className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white sm:w-auto"
                     >
                       <Download size={12} />
                       Download
@@ -315,9 +315,9 @@ export default function CoreLeaderReportReview() {
 
               <div
                 ref={commentSectionRef}
-                className="mb-4 overflow-hidden rounded-2xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+                className="mb-4 overflow-hidden rounded-xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl"
               >
-                <div className="flex items-center justify-between border-b border-stone-100 px-6 py-4 dark:border-neutral-800">
+                <div className="flex items-center justify-between border-b border-stone-100 px-4 py-4 dark:border-neutral-800 sm:px-6">
                   <div className="flex items-center gap-2">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                       Comments
@@ -331,7 +331,7 @@ export default function CoreLeaderReportReview() {
                   <MessageSquare size={14} className="text-stone-300 dark:text-neutral-600" />
                 </div>
 
-                <div className="px-6 py-5">
+                <div className="px-4 py-5 sm:px-6">
                   {!report.comments || report.comments.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-center">
                       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 dark:bg-neutral-800">
@@ -347,7 +347,7 @@ export default function CoreLeaderReportReview() {
                   ) : (
                     <div className="space-y-6">
                       {report.comments.map((commentItem) => (
-                        <div key={commentItem.id} className="flex items-start gap-4">
+                        <div key={commentItem.id} className="flex items-start gap-3 sm:gap-4">
                           <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-stone-200 text-[10px] font-semibold text-stone-600 dark:bg-neutral-700 dark:text-neutral-300">
                             {getInitials(commentItem.authorUser?.name ?? "L")}
                           </div>
@@ -384,7 +384,7 @@ export default function CoreLeaderReportReview() {
                   )}
                 </div>
 
-                <div className="border-t border-stone-100 px-6 pb-6 pt-5 dark:border-neutral-800">
+                <div className="border-t border-stone-100 px-4 pb-5 pt-5 dark:border-neutral-800 sm:px-6 sm:pb-6">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-stone-200 text-[10px] font-semibold text-stone-600 dark:bg-neutral-700 dark:text-neutral-300">
                       {getInitials(me?.name ?? "CL")}
@@ -421,14 +421,14 @@ export default function CoreLeaderReportReview() {
                           {commentError}
                         </p>
                       )}
-                      <div className="mt-2.5 flex items-center justify-between">
+                      <div className="mt-2.5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-[11px] text-stone-400 dark:text-neutral-500">
                           Press Ctrl/Cmd + Enter to submit
                         </p>
                         <button
                           onClick={() => void handleSubmitComment()}
                           disabled={isSubmittingComment}
-                          className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100"
                         >
                           {isSubmittingComment ? (
                             <>

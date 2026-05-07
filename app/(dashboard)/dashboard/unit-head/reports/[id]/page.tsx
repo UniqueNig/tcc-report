@@ -78,7 +78,7 @@ export default function UnitHeadReportDetailPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
 
-        <main className="fade-up flex-1 overflow-y-auto px-4 py-6 lg:px-8">
+        <main className="fade-up flex-1 overflow-y-auto px-3 py-6 sm:px-4 lg:px-8">
           {loading ? (
             <ReportSkeleton />
           ) : !report ? (
@@ -94,7 +94,7 @@ export default function UnitHeadReportDetailPage() {
               </p>
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl">
+            <div className="mx-auto w-full max-w-3xl">
               <Link
                 href="/dashboard/unit-head/reports"
                 className="mb-5 inline-flex items-center gap-1.5 text-xs text-stone-400 transition-colors hover:text-stone-700 dark:text-neutral-500 dark:hover:text-neutral-200"
@@ -104,18 +104,18 @@ export default function UnitHeadReportDetailPage() {
               </Link>
 
               <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h1 className="text-xl font-semibold leading-snug tracking-tight text-stone-900 dark:text-white">
+                <div className="min-w-0 flex-1">
+                  <h1 className="break-words text-xl font-semibold leading-snug tracking-tight text-stone-900 dark:text-white">
                     {report.title}
                   </h1>
-                  <p className="mt-1 text-sm text-stone-400 dark:text-neutral-500">
+                  <p className="mt-1 break-words text-sm text-stone-400 dark:text-neutral-500">
                     Report #{report.id}
                   </p>
                 </div>
                 <ReportStatusPill status={report.status} />
               </div>
 
-              <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-4 rounded-xl border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:p-6">
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   {[
                     {
@@ -142,15 +142,15 @@ export default function UnitHeadReportDetailPage() {
                           : "Awaiting review",
                     },
                   ].map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="flex items-start gap-3">
+                    <div key={label} className="flex min-w-0 items-start gap-3">
                       <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg bg-stone-100 dark:bg-neutral-800">
                         <Icon size={13} className="text-stone-500 dark:text-neutral-400" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                           {label}
                         </p>
-                        <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">
+                        <p className="break-words text-sm font-medium text-stone-800 dark:text-neutral-200">
                           {value}
                         </p>
                       </div>
@@ -160,7 +160,7 @@ export default function UnitHeadReportDetailPage() {
               </div>
 
               {report.attachmentName && (
-                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:px-5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
                     <Paperclip size={15} className="text-stone-500 dark:text-neutral-400" />
                   </div>
@@ -176,7 +176,7 @@ export default function UnitHeadReportDetailPage() {
                     <a
                       href={report.attachmentUrl}
                       download={report.attachmentName}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                      className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white sm:w-auto"
                     >
                       <Download size={12} />
                       Download
@@ -191,7 +191,7 @@ export default function UnitHeadReportDetailPage() {
                 </div>
               )}
 
-              <div className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:p-6">
                 <div className="mb-5 flex items-center gap-2">
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                     Comments from leadership
@@ -225,7 +225,7 @@ export default function UnitHeadReportDetailPage() {
                         <div className="min-w-0 flex-1">
                           <div className="rounded-2xl rounded-tl-sm border border-stone-100 bg-stone-50 px-4 py-3 dark:border-neutral-700/60 dark:bg-neutral-800">
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-xs font-semibold text-stone-800 dark:text-neutral-200">
                                   {comment.authorUser?.name ?? "Leadership"}
                                 </span>

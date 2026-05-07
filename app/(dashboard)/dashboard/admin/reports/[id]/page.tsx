@@ -218,9 +218,9 @@ export default function AdminReportDetailPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar onMenuClick={() => setSidebarOpen(true)} user={{ name: sidebarUser.name }} />
 
-        <main className="fade-up flex-1 overflow-y-auto px-4 py-6 lg:px-8">
+        <main className="fade-up flex-1 overflow-y-auto px-3 py-6 sm:px-4 lg:px-8">
           {toast && (
-            <div className="fixed right-4 top-4 z-50 flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="fixed left-4 right-4 top-4 z-50 flex items-center gap-2.5 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 sm:left-auto">
               <CheckCircle2 size={15} className="shrink-0 text-emerald-500" />
               <p className="text-sm font-medium text-stone-800 dark:text-neutral-200">{toast}</p>
             </div>
@@ -253,39 +253,39 @@ export default function AdminReportDetailPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-              <div className="space-y-4 xl:col-span-2">
-                <div className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="min-w-0 space-y-4 xl:col-span-2">
+                <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:p-6">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
                         <ReportStatusPill status={report.status} />
                       </div>
-                      <h1 className="mb-1 text-xl font-semibold tracking-tight text-stone-900 dark:text-white">
+                      <h1 className="mb-1 break-words text-xl font-semibold tracking-tight text-stone-900 dark:text-white">
                         {report.title}
                       </h1>
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone-400 dark:text-neutral-500">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Building2 size={11} />
+                        <span className="inline-flex min-w-0 items-center gap-1.5 break-words">
+                          <Building2 size={11} className="shrink-0" />
                           {report.unit?.name ?? "Unknown unit"}
                         </span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <User size={11} />
+                        <span className="inline-flex min-w-0 items-center gap-1.5 break-words">
+                          <User size={11} className="shrink-0" />
                           {report.submittedByUser?.name ?? "Unknown"}
                         </span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <Calendar size={11} />
+                        <span className="inline-flex min-w-0 items-center gap-1.5 break-words">
+                          <Calendar size={11} className="shrink-0" />
                           {formatLongDate(report.createdAt)}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
                       {report.status === "pending" && (
                         <button
                           onClick={() => void handleMarkReviewed()}
                           disabled={isMarkingReviewed}
-                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex min-w-[8.5rem] flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
                         >
                           {isMarkingReviewed ? (
                             <>
@@ -299,14 +299,14 @@ export default function AdminReportDetailPage() {
                       )}
                       <button
                         onClick={() => void handleExport()}
-                        className="inline-flex items-center gap-2 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition-all hover:bg-stone-50 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                        className="inline-flex min-w-[8.5rem] flex-1 items-center justify-center gap-2 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition-all hover:bg-stone-50 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white sm:flex-none"
                       >
                         <Download size={14} />
                         Export
                       </button>
                       <button
                         onClick={() => setShowDelete(true)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-red-500 transition-all hover:border-red-200 hover:bg-red-50 dark:border-neutral-700 dark:text-red-400 dark:hover:border-red-900 dark:hover:bg-red-950/40"
+                        className="inline-flex min-w-[8.5rem] flex-1 items-center justify-center gap-2 rounded-xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-red-500 transition-all hover:border-red-200 hover:bg-red-50 dark:border-neutral-700 dark:text-red-400 dark:hover:border-red-900 dark:hover:bg-red-950/40 sm:flex-none"
                       >
                         <Trash2 size={14} />
                         Delete
@@ -326,7 +326,7 @@ export default function AdminReportDetailPage() {
                 </div>
 
                 {report.attachmentName && (
-                  <div className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-5 py-4 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:px-5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 dark:bg-neutral-800">
                       <Paperclip size={15} className="text-stone-500 dark:text-neutral-400" />
                     </div>
@@ -342,7 +342,7 @@ export default function AdminReportDetailPage() {
                       <a
                         href={report.attachmentUrl}
                         download={report.attachmentName}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                        className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:bg-stone-100 hover:text-stone-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white sm:w-auto"
                       >
                         <Download size={12} />
                         Download
@@ -358,8 +358,8 @@ export default function AdminReportDetailPage() {
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="min-w-0 space-y-4">
+                <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:p-5">
                   <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                     Timeline
                   </h2>
@@ -385,7 +385,7 @@ export default function AdminReportDetailPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-stone-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900 sm:rounded-2xl sm:p-5">
                   <div className="mb-4 flex items-center gap-2">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                       Comments
@@ -443,7 +443,7 @@ export default function AdminReportDetailPage() {
                     <button
                       onClick={() => void handlePostComment()}
                       disabled={isPostingComment || !commentText.trim()}
-                      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100"
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100 sm:w-auto"
                     >
                       {isPostingComment ? (
                         <>
