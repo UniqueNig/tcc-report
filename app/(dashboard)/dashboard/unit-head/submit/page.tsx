@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import {
   AlertCircle,
@@ -103,7 +103,11 @@ function FieldRenderer({
         onChange={(event) =>
           onChange(
             field.id,
-            field.type === "text" ? event.target.value : Number(event.target.value) || ""
+            field.type === "text"
+              ? event.target.value
+              : event.target.value === ""
+                ? ""
+                : Number(event.target.value)
           )
         }
         placeholder={field.placeholder}
@@ -230,6 +234,7 @@ export default function SubmitReportPage() {
   const [attachmentError, setAttachmentError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [successReportId, setSuccessReportId] = useState<string | null>(null);
+  const [selectedUnitId, setSelectedUnitId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, loading, error: meError } = useQuery<{ me: GraphQLUser | null }>(ME_QUERY, {
@@ -242,22 +247,30 @@ export default function SubmitReportPage() {
 
   const me = data?.me ?? null;
   const sidebarUser = toSidebarUser(me);
-  const unitName = me?.unit?.name ?? "";
-  const schema = getUnitSchema(unitName, me?.unit?.formSchema);
+  const headedUnits = useMemo(
+    () => (me?.units?.length ? me.units : me?.unit ? [me.unit] : []),
+    [me]
+  );
+  const hasMultipleUnits = headedUnits.length > 1;
+  const selectedUnit =
+    headedUnits.find((unit) => unit.id === selectedUnitId) ??
+    (!hasMultipleUnits ? headedUnits[0] ?? null : null);
+  const unitName = selectedUnit?.name ?? "";
+  const schema = selectedUnit ? getUnitSchema(unitName, selectedUnit.formSchema) : null;
   const formUnavailableTitle = meError
     ? "Could not load report form"
     : !me
       ? "Session not available"
-      : !me.unit
+      : headedUnits.length === 0
         ? "No unit assigned"
         : "No form configured";
   const formUnavailableDescription = meError
     ? "The dashboard could not load your account details. Refresh the page or sign in again."
     : !me
       ? "Your session was not found. Sign in again to continue submitting reports."
-      : !me.unit
+      : headedUnits.length === 0
         ? "Your account has not been assigned to a unit yet. Contact your admin."
-        : `A report form has not been set up for ${unitName || "your unit"} yet. Contact your admin.`;
+      : `A report form has not been set up for ${unitName || "your unit"} yet. Contact your admin.`;
 
   function updateField(id: string, value: FieldValue | "") {
     setFormValues((current) => ({ ...current, [id]: value }));
@@ -315,6 +328,11 @@ export default function SubmitReportPage() {
   }
 
   async function handleSubmit() {
+    if (!selectedUnit) {
+      setErrors({ _form: "Select the unit this report is for." });
+      return;
+    }
+
     if (!schema || !validate()) {
       document
         .querySelector("[data-has-error]")
@@ -345,6 +363,7 @@ export default function SubmitReportPage() {
             title:
               String(formValues.serviceTitle ?? "").trim() ||
               `${unitName} report ${new Date().toISOString().slice(0, 10)}`,
+            unitId: selectedUnit?.id,
             sections,
             attachmentUrl,
             attachmentName: attachment?.name,
@@ -388,7 +407,7 @@ export default function SubmitReportPage() {
     );
   }
 
-  if (meError || !me || !me.unit || !schema) {
+  if (meError || !me || headedUnits.length === 0) {
     return (
       <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={sidebarUser} />
@@ -471,7 +490,9 @@ export default function SubmitReportPage() {
                 Submit a report
               </h1>
               <p className="mt-1 text-sm text-stone-500 dark:text-neutral-400">
-                {schema.unitName} · fill in the details for your core leader&apos;s review
+                {selectedUnit
+                  ? `${schema?.unitName ?? selectedUnit.name} - fill in the details for your core leader's review`
+                  : "Select which assigned unit this report is for"}
               </p>
             </div>
 
@@ -484,7 +505,28 @@ export default function SubmitReportPage() {
                   <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-neutral-500">
                     Unit
                   </p>
-                  <p className="text-sm font-medium text-stone-900 dark:text-white">{unitName}</p>
+                  {headedUnits.length > 1 ? (
+                    <select
+                      value={selectedUnit?.id ?? ""}
+                      onChange={(event) => {
+                        setSelectedUnitId(event.target.value);
+                        setFormValues({});
+                        setErrors({});
+                      }}
+                      className="mt-1 max-w-full rounded-lg border border-stone-200 bg-stone-50 px-2 py-1 text-sm font-medium text-stone-900 outline-none focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                    >
+                      <option value="">Select a unit</option>
+                      {headedUnits.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-sm font-medium text-stone-900 dark:text-white">
+                      {unitName}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
@@ -507,7 +549,8 @@ export default function SubmitReportPage() {
               </div>
             )}
 
-            {schema.sections.map((section) => (
+            {schema ? (
+              schema.sections.map((section) => (
               <div
                 key={section.title}
                 className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
@@ -543,7 +586,20 @@ export default function SubmitReportPage() {
                   ))}
                 </div>
               </div>
-            ))}
+              ))
+            ) : (
+              <div className="mb-4 rounded-2xl border border-dashed border-stone-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 dark:bg-neutral-800">
+                  <Building2 size={17} className="text-stone-400 dark:text-neutral-500" />
+                </div>
+                <p className="text-sm font-medium text-stone-700 dark:text-neutral-300">
+                  Choose a unit to load its report form
+                </p>
+                <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
+                  Each unit can have its own fields and follow-up details.
+                </p>
+              </div>
+            )}
 
             <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
               <h2 className="mb-5 text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
@@ -645,7 +701,7 @@ export default function SubmitReportPage() {
               </div>
               <button
                 onClick={() => void handleSubmit()}
-                disabled={isSubmitting}
+                disabled={!schema || isSubmitting}
                 className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-100"
               >
                 {isSubmitting ? (

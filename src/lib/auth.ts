@@ -14,6 +14,7 @@ export interface JWTPayload {
   email: string;
   role: UserRole;
   unitId?: string;
+  unitIds?: string[];
 }
 
 // ── Sign ───────────────────────────────────────────────

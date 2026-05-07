@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import PaginationControls from "@/src/components/PaginationControls";
 import {
   CREATE_UNIT_MUTATION,
   DELETE_UNIT_MUTATION,
@@ -48,10 +49,15 @@ interface UnitAccount {
   email: string;
   role: UserRole;
   unitId?: string | null;
+  unitIds?: string[];
   unit?: {
     id: string;
     name: string;
   } | null;
+  units?: {
+    id: string;
+    name: string;
+  }[];
 }
 
 interface AdminUnit {
@@ -106,6 +112,7 @@ interface UnitFormErrors {
 }
 
 const SKELETON_WIDTHS = ["64%", "82%", "58%", "76%", "49%", "68%"];
+const PAGE_SIZE = 10;
 const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: "text", label: "Short text" },
   { value: "textarea", label: "Long text" },
@@ -348,7 +355,13 @@ function UnitModal({
 
   function update(field: "name" | "coreLeaderId" | "headId", value: string) {
     setForm((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
+    setErrors((current) => {
+      const next = { ...current };
+      if (field === "name" || field === "coreLeaderId") {
+        delete next[field];
+      }
+      return next;
+    });
   }
 
   function updateFormField<T extends keyof EditableFormField>(
@@ -362,7 +375,11 @@ function UnitModal({
         item.clientId === clientId ? { ...item, [field]: value } : item
       ),
     }));
-    setErrors((current) => ({ ...current, formFields: undefined }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.formFields;
+      return next;
+    });
   }
 
   function addFormField() {
@@ -515,11 +532,18 @@ function UnitModal({
               >
                 <option value="">No unit head</option>
                 {unitHeads.map((head) => {
-                  const assignment = head.unit
-                    ? head.unit.id === editingUnitId
-                      ? "current head"
-                      : `assigned to ${head.unit.name}`
-                    : "unassigned";
+                  const unitNames = head.units?.map((unit) => unit.name) ?? [];
+                  const isCurrentHead = editingUnitId
+                    ? (head.unitIds ?? []).includes(editingUnitId) ||
+                      head.unit?.id === editingUnitId
+                    : false;
+                  const assignment = isCurrentHead
+                    ? "current head"
+                    : unitNames.length > 0
+                      ? `heads ${unitNames.join(", ")}`
+                      : head.unit
+                        ? `heads ${head.unit.name}`
+                        : "unassigned";
 
                   return (
                     <option key={head.id} value={head.id}>
@@ -541,8 +565,8 @@ function UnitModal({
               className="mt-0.5 shrink-0 text-stone-400 dark:text-neutral-500"
             />
             <p className="text-xs leading-relaxed text-stone-500 dark:text-neutral-400">
-              Assigning a unit head moves that account to this unit. Leave it empty to keep the
-              unit without a head.
+              A unit head can lead more than one unit. Reassigning this specific unit only moves
+              this unit from its previous head.
             </p>
           </div>
 
@@ -724,6 +748,7 @@ export default function AdminUnitsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [leaderFilter, setLeaderFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editingUnit, setEditingUnit] = useState<AdminUnit | null>(null);
   const [deletingUnit, setDeletingUnit] = useState<AdminUnit | null>(null);
@@ -774,6 +799,12 @@ export default function AdminUnitsPage() {
         return matchesSearch && matchesLeader;
       }),
     [leaderFilter, search, units]
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredUnits.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedUnits = filteredUnits.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
   );
 
   const totalReports = units.reduce((total, unit) => total + unit.reportCount, 0);
@@ -902,7 +933,10 @@ export default function AdminUnitsPage() {
                     type="text"
                     placeholder="Search units..."
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }}
                     className="w-44 rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-8 pr-3 text-xs text-stone-900 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
                   />
                 </div>
@@ -913,7 +947,10 @@ export default function AdminUnitsPage() {
                   />
                   <select
                     value={leaderFilter}
-                    onChange={(event) => setLeaderFilter(event.target.value)}
+                    onChange={(event) => {
+                      setLeaderFilter(event.target.value);
+                      setPage(1);
+                    }}
                     className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
                   >
                     <option value="all">All core leaders</option>
@@ -972,7 +1009,7 @@ export default function AdminUnitsPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredUnits.map((unit) => (
+                    paginatedUnits.map((unit) => (
                       <tr
                         key={unit.id}
                         className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40"
@@ -1048,6 +1085,15 @@ export default function AdminUnitsPage() {
                 </tbody>
               </table>
             </div>
+            {!loading && (
+              <PaginationControls
+                page={currentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filteredUnits.length}
+                itemLabel="units"
+                onPageChange={setPage}
+              />
+            )}
           </div>
         </main>
       </div>

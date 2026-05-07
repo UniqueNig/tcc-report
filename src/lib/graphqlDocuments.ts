@@ -99,7 +99,27 @@ export const ME_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
+        id
+        name
+        coreLeader {
+          id
+          name
+          email
+        }
+        unitHead {
+          id
+          name
+          email
+        }
+        reportCount
+        pendingCount
+        formSchema {
+          ...UnitFormSchemaParts
+        }
+      }
+      units {
         id
         name
         coreLeader {
@@ -133,6 +153,7 @@ export const ADMIN_DASHBOARD_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
@@ -144,9 +165,24 @@ export const ADMIN_DASHBOARD_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
+        unitHead {
+          id
+          name
+          email
+        }
+      }
+      units {
+        id
+        name
+        unitHead {
+          id
+          name
+          email
+        }
       }
       createdAt
       updatedAt
@@ -188,6 +224,7 @@ export const CORE_LEADER_DASHBOARD_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
@@ -230,6 +267,7 @@ export const UNIT_HEAD_DASHBOARD_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
@@ -240,6 +278,20 @@ export const UNIT_HEAD_DASHBOARD_QUERY = gql`
         }
         reportCount
         pendingCount
+      }
+      units {
+        id
+        name
+        coreLeader {
+          id
+          name
+          email
+        }
+        reportCount
+        pendingCount
+        formSchema {
+          ...UnitFormSchemaParts
+        }
       }
     }
     reports {
@@ -263,9 +315,24 @@ export const USERS_PAGE_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
+        unitHead {
+          id
+          name
+          email
+        }
+      }
+      units {
+        id
+        name
+        unitHead {
+          id
+          name
+          email
+        }
       }
       createdAt
       updatedAt
@@ -323,7 +390,12 @@ export const UNITS_PAGE_QUERY = gql`
       email
       role
       unitId
+      unitIds
       unit {
+        id
+        name
+      }
+      units {
         id
         name
       }
@@ -438,9 +510,24 @@ export const CREATE_USER_MUTATION = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
+        unitHead {
+          id
+          name
+          email
+        }
+      }
+      units {
+        id
+        name
+        unitHead {
+          id
+          name
+          email
+        }
       }
       createdAt
       updatedAt
@@ -456,9 +543,24 @@ export const UPDATE_USER_MUTATION = gql`
       email
       role
       unitId
+      unitIds
       unit {
         id
         name
+        unitHead {
+          id
+          name
+          email
+        }
+      }
+      units {
+        id
+        name
+        unitHead {
+          id
+          name
+          email
+        }
       }
       createdAt
       updatedAt

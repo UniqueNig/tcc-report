@@ -22,6 +22,7 @@ import {
 import Link from "next/link";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import PaginationControls from "@/src/components/PaginationControls";
 import ReportStatusPill from "@/src/components/reports/ReportStatusPill";
 import { DELETE_REPORT_MUTATION, REPORTS_PAGE_QUERY } from "@/src/lib/graphqlDocuments";
 import {
@@ -36,6 +37,7 @@ import {
 
 type SortField = "title" | "unitName" | "submittedBy" | "dateSubmitted" | "status";
 type SortDir = "asc" | "desc";
+const PAGE_SIZE = 10;
 
 function BulkDeleteModal({
   count,
@@ -118,6 +120,7 @@ export default function AdminReportsPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [page, setPage] = useState(1);
 
   const { data, loading, refetch } = useQuery<{
     me: GraphQLUser | null;
@@ -191,7 +194,11 @@ export default function AdminReportsPage() {
 
   const pendingCount = rows.filter((row) => row.status === "pending").length;
   const reviewedCount = rows.filter((row) => row.status === "reviewed").length;
-  const allSelected = filtered.length > 0 && selected.size === filtered.length;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const allSelected =
+    paginated.length > 0 && paginated.every((row) => selected.has(row.id));
   const activeFilters = (statusFilter !== "all" ? 1 : 0) + (unitFilter !== "all" ? 1 : 0);
 
   function toggleSort(field: SortField) {
@@ -218,17 +225,26 @@ export default function AdminReportsPage() {
 
   function toggleSelectAll() {
     if (allSelected) {
-      setSelected(new Set());
+      setSelected((current) => {
+        const next = new Set(current);
+        paginated.forEach((row) => next.delete(row.id));
+        return next;
+      });
       return;
     }
 
-    setSelected(new Set(filtered.map((row) => row.id)));
+    setSelected((current) => {
+      const next = new Set(current);
+      paginated.forEach((row) => next.add(row.id));
+      return next;
+    });
   }
 
   function clearFilters() {
     setSearch("");
     setStatusFilter("all");
     setUnitFilter("all");
+    setPage(1);
   }
 
   async function handleBulkDelete() {
@@ -272,7 +288,10 @@ export default function AdminReportsPage() {
 
           <div className="mb-6 flex flex-wrap gap-3">
             <button
-              onClick={() => setStatusFilter("all")}
+              onClick={() => {
+                setStatusFilter("all");
+                setPage(1);
+              }}
               className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-medium transition-all ${
                 statusFilter === "all"
                   ? "border-stone-900 bg-stone-900 text-white dark:border-white dark:bg-white dark:text-stone-900"
@@ -282,11 +301,14 @@ export default function AdminReportsPage() {
               <FileText size={12} />
               All reports
               <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-stone-100 px-1 text-[10px] font-semibold text-stone-500 dark:bg-neutral-800 dark:text-neutral-400">
-                {rows.length}
+              {rows.length}
               </span>
             </button>
             <button
-              onClick={() => setStatusFilter("pending")}
+              onClick={() => {
+                setStatusFilter("pending");
+                setPage(1);
+              }}
               className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-medium transition-all ${
                 statusFilter === "pending"
                   ? "border-amber-500 bg-amber-500 text-white"
@@ -300,7 +322,10 @@ export default function AdminReportsPage() {
               </span>
             </button>
             <button
-              onClick={() => setStatusFilter("reviewed")}
+              onClick={() => {
+                setStatusFilter("reviewed");
+                setPage(1);
+              }}
               className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-medium transition-all ${
                 statusFilter === "reviewed"
                   ? "border-emerald-600 bg-emerald-600 text-white"
@@ -359,7 +384,10 @@ export default function AdminReportsPage() {
                     type="text"
                     placeholder="Search reports..."
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }}
                     className="w-48 rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-8 pr-3 text-xs text-stone-900 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500 dark:focus:border-neutral-500"
                   />
                 </div>
@@ -392,7 +420,10 @@ export default function AdminReportsPage() {
                   />
                   <select
                     value={unitFilter}
-                    onChange={(event) => setUnitFilter(event.target.value)}
+                    onChange={(event) => {
+                      setUnitFilter(event.target.value);
+                      setPage(1);
+                    }}
                     className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-white py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
                   >
                     <option value="all">All units</option>
@@ -406,7 +437,10 @@ export default function AdminReportsPage() {
 
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as "all" | "pending" | "reviewed")}
+                  onChange={(event) => {
+                    setStatusFilter(event.target.value as "all" | "pending" | "reviewed");
+                    setPage(1);
+                  }}
                   className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
                 >
                   <option value="all">All status</option>
@@ -473,7 +507,7 @@ export default function AdminReportsPage() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((row) => (
+                    paginated.map((row) => (
                       <tr
                         key={row.id}
                         className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40"
@@ -523,6 +557,15 @@ export default function AdminReportsPage() {
                 </tbody>
               </table>
             </div>
+            {!loading && (
+              <PaginationControls
+                page={currentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filtered.length}
+                itemLabel="reports"
+                onPageChange={setPage}
+              />
+            )}
           </div>
 
           {showBulkDelete && (

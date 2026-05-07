@@ -105,10 +105,12 @@ export const UNIT_SCHEMAS: Record<string, UnitSchema> = {
         ],
       },
       {
-        title: "Offering",
+        title: "Collections",
         fields: [
-          { id: "offeringAmount", label: "Total offering collected (₦)", type: "currency", required: true, placeholder: "e.g. 128500" },
-          { id: "offeringNotes", label: "Offering notes", type: "textarea", required: false, placeholder: "Breakdown or any notes on the offering…" },
+          { id: "offeringAmount", label: "Offering envelope amount (NGN)", type: "currency", required: true, placeholder: "e.g. 128500" },
+          { id: "titheAmount", label: "Tithe envelope amount (NGN)", type: "currency", required: true, placeholder: "e.g. 45000" },
+          { id: "seedAmount", label: "Seed / donation envelope amount (NGN)", type: "currency", required: true, placeholder: "e.g. 20000" },
+          { id: "offeringNotes", label: "Collection / envelope notes", type: "textarea", required: false, placeholder: "Breakdown or any notes on the envelopes..." },
         ],
       },
       {
@@ -275,16 +277,74 @@ export const UNIT_SCHEMAS: Record<string, UnitSchema> = {
         fields: SHARED_FIELDS.slice(0, 2),
       },
       {
-        title: "Financial report",
+        title: "Finance report",
         fields: [
-          { id: "offeringReceived", label: "Total offering received from ushers (₦)", type: "currency", required: true, placeholder: "e.g. 128500" },
-          { id: "offeringBanked", label: "Amount banked (₦)", type: "currency", required: true, placeholder: "e.g. 128500" },
+          {
+            id: "offeringReceived",
+            label: "Offering received from ushers (NGN)",
+            type: "currency",
+            required: true,
+            placeholder: "e.g. 128500",
+            helpText: "Enter 0 if no usher offering was handed over for this service.",
+          },
+          {
+            id: "offeringBanked",
+            label: "Usher offering banked/deposited (NGN)",
+            type: "currency",
+            required: true,
+            placeholder: "e.g. 128500",
+            helpText: "This is only the amount from ushers, not tithes, seeds, or other finance-only income.",
+          },
+          {
+            id: "titheReceived",
+            label: "Tithe received from ushers (NGN)",
+            type: "currency",
+            required: true,
+            placeholder: "e.g. 45000",
+            helpText: "Enter 0 if no tithe envelope was handed over by ushers.",
+          },
+          {
+            id: "specialSeedReceived",
+            label: "Seed / donation received from ushers (NGN)",
+            type: "currency",
+            required: true,
+            placeholder: "e.g. 20000",
+            helpText: "Enter 0 if no seed/donation envelope was handed over by ushers.",
+          },
+          {
+            id: "otherIncomeReceived",
+            label: "Other direct income received (NGN)",
+            type: "currency",
+            required: false,
+            placeholder: "e.g. 10000",
+            helpText: "Use this only for money that did not pass through ushers.",
+          },
+          {
+            id: "otherIncomeSource",
+            label: "Other direct income source / description",
+            type: "textarea",
+            required: false,
+            placeholder: "Describe where the direct non-usher income came from...",
+          },
+          {
+            id: "totalIncomeBanked",
+            label: "Total income banked/deposited (NGN)",
+            type: "currency",
+            required: true,
+            placeholder: "e.g. 193500",
+            helpText: "All usher handover envelopes + direct non-usher income that was banked or deposited.",
+          },
           { id: "bankingDate", label: "Banking date", type: "text", required: false, placeholder: "e.g. May 5, 2026" },
-          { id: "discrepancies", label: "Any discrepancies?", type: "boolean", required: true },
+          {
+            id: "bankingReference",
+            label: "Bank / deposit reference",
+            type: "text",
+            required: false,
+            placeholder: "Receipt number, teller id, transfer reference...",
+          },
+          { id: "discrepancies", label: "Any finance discrepancy?", type: "boolean", required: true },
           { id: "discrepancyDetails", label: "Discrepancy details", type: "textarea", required: false, placeholder: "Explain any difference between collected and banked amounts…" },
-          { id: "titheReceived", label: "Tithes received (₦)", type: "currency", required: false, placeholder: "e.g. 45000" },
-          { id: "specialSeedReceived", label: "Special seeds / donations (₦)", type: "currency", required: false, placeholder: "e.g. 20000" },
-          { id: "expenditure", label: "Expenditure this week (₦)", type: "currency", required: false, placeholder: "e.g. 15000" },
+          { id: "expenditure", label: "Expenditure this week (NGN)", type: "currency", required: false, placeholder: "e.g. 15000" },
           { id: "expenditureNotes", label: "Expenditure notes", type: "textarea", required: false, placeholder: "What was the expenditure for…" },
           { id: "highlights", label: "Notes / highlights", type: "textarea", required: false, placeholder: "Any financial observations or notes…" },
         ],
@@ -319,8 +379,10 @@ export const UNIT_SCHEMAS: Record<string, UnitSchema> = {
   },
 };
 
+const FAMILY_GROUP_NAMES = ["Goshen", "David", "Joseph", "Issachar", "Judah"];
+
 // Clone family head schema for other family groups
-["David", "Joseph", "Issachar", "Judah"].forEach((name) => {
+FAMILY_GROUP_NAMES.filter((name) => name !== "Goshen").forEach((name) => {
   UNIT_SCHEMAS[`Family Head - ${name}`] = {
     ...UNIT_SCHEMAS["Family Head - Goshen"],
     unitName: `Family Head - ${name}`,
@@ -348,9 +410,13 @@ const UNIT_SCHEMA_LOOKUP = Object.keys(UNIT_SCHEMAS).reduce<Record<string, strin
 );
 
 const UNIT_SCHEMA_ALIASES: Record<string, string> = {
+  account: "Finance Unit (Accounting)",
+  accounts: "Finance Unit (Accounting)",
   accounting: "Finance Unit (Accounting)",
+  child: "Children Unit",
   children: "Children Unit",
   "children church": "Children Unit",
+  childrens: "Children Unit",
   choir: "Music Unit",
   finance: "Finance Unit (Accounting)",
   "finance accounting": "Finance Unit (Accounting)",
@@ -359,13 +425,43 @@ const UNIT_SCHEMA_ALIASES: Record<string, string> = {
   prayer: "Prayer Unit",
   protocol: "Protocol Unit",
   sound: "Technical/Sound Unit",
+  tech: "Technical/Sound Unit",
   technical: "Technical/Sound Unit",
   "technical sound": "Technical/Sound Unit",
+  usher: "Ushering Unit",
   ushering: "Ushering Unit",
   ushers: "Ushering Unit",
   welfare: "Welfare Unit",
   worship: "Music Unit",
 };
+
+const UNIT_SCHEMA_TOKEN_ALIASES: { schemaName: string; tokens: string[] }[] = [
+  {
+    schemaName: "Finance Unit (Accounting)",
+    tokens: ["account", "accounts", "accounting", "finance"],
+  },
+  { schemaName: "Technical/Sound Unit", tokens: ["sound", "tech", "technical"] },
+  { schemaName: "Children Unit", tokens: ["child", "children", "childrens", "creche"] },
+  { schemaName: "Music Unit", tokens: ["choir", "music", "worship"] },
+  { schemaName: "Ushering Unit", tokens: ["usher", "ushering", "ushers"] },
+  { schemaName: "Media Unit", tokens: ["media"] },
+  { schemaName: "Prayer Unit", tokens: ["intercession", "intercessory", "prayer"] },
+  { schemaName: "Protocol Unit", tokens: ["protocol"] },
+  { schemaName: "Welfare Unit", tokens: ["welfare"] },
+];
+
+function findKnownUnitSchemaName(normalizedName: string) {
+  const exactName = UNIT_SCHEMA_LOOKUP[normalizedName] ?? UNIT_SCHEMA_ALIASES[normalizedName];
+  if (exactName) return exactName;
+
+  const tokens = new Set(normalizedName.split(" ").filter(Boolean));
+  const familyGroup = FAMILY_GROUP_NAMES.find((name) => tokens.has(name.toLowerCase()));
+  if (familyGroup) return `Family Head - ${familyGroup}`;
+
+  return UNIT_SCHEMA_TOKEN_ALIASES.find((alias) =>
+    alias.tokens.some((token) => tokens.has(token))
+  )?.schemaName;
+}
 
 function createDefaultUnitSchema(unitName: string): UnitSchema {
   const displayName = unitName.trim();
@@ -441,6 +537,13 @@ export function getUnitSchema(unitName: string, configuredSchema?: UnitSchema | 
   const trimmedName = unitName.trim();
   if (!trimmedName) return null;
 
+  const normalizedName = normalizeUnitName(trimmedName);
+  const schemaName = findKnownUnitSchemaName(normalizedName);
+
+  if (schemaName) {
+    return UNIT_SCHEMAS[schemaName] ?? createDefaultUnitSchema(trimmedName);
+  }
+
   if (configuredSchema && hasConfiguredFields(configuredSchema)) {
     return {
       ...configuredSchema,
@@ -448,10 +551,7 @@ export function getUnitSchema(unitName: string, configuredSchema?: UnitSchema | 
     };
   }
 
-  const normalizedName = normalizeUnitName(trimmedName);
-  const schemaName = UNIT_SCHEMA_LOOKUP[normalizedName] ?? UNIT_SCHEMA_ALIASES[normalizedName];
-
-  return schemaName ? UNIT_SCHEMAS[schemaName] ?? createDefaultUnitSchema(trimmedName) : createDefaultUnitSchema(trimmedName);
+  return createDefaultUnitSchema(trimmedName);
 }
 
 // ── Helper: get all unit names ─────────────────────────

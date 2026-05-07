@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import PaginationControls from "@/src/components/PaginationControls";
 import { ADMIN_ANALYTICS_QUERY } from "@/src/lib/graphqlDocuments";
 import {
   buildAttendanceRecords,
@@ -28,6 +29,7 @@ import {
 
 type Period = "monthly" | "quarterly" | "yearly";
 type View = "attendance" | "offering";
+const ANALYTICS_PAGE_SIZE = 10;
 
 function getQuarter(iso: string) {
   const month = new Date(iso).getMonth();
@@ -152,7 +154,7 @@ function DataTable({
   rows,
   extraHeader,
 }: {
-  rows: { date: string; serviceType: string; total: number; detail: string; extra?: string }[];
+  rows: { id: string; date: string; serviceType: string; total: number; detail: string; extra?: string }[];
   extraHeader?: string;
 }) {
   if (rows.length === 0) {
@@ -189,7 +191,7 @@ function DataTable({
         </thead>
         <tbody className="divide-y divide-stone-50 dark:divide-neutral-800/60">
           {rows.map((row) => (
-            <tr key={`${row.date}-${row.serviceType}`} className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40">
+            <tr key={row.id} className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40">
               <td className="whitespace-nowrap px-5 py-3 text-sm font-medium text-stone-800 dark:text-neutral-200">
                 {row.date}
               </td>
@@ -220,6 +222,8 @@ export default function AdminAnalyticsPage() {
   const [view, setView] = useState<View>("attendance");
   const [period, setPeriod] = useState<Period>("monthly");
   const [serviceTypeFilter, setServiceTypeFilter] = useState("all");
+  const [attendancePage, setAttendancePage] = useState(1);
+  const [offeringPage, setOfferingPage] = useState(1);
 
   const { data, loading, error } = useQuery<{
     me: GraphQLUser | null;
@@ -279,9 +283,10 @@ export default function AdminAnalyticsPage() {
 
   const totalCollected = filteredOffering.reduce((total, record) => total + record.collected, 0);
   const totalBanked = filteredOffering.reduce((total, record) => total + record.banked, 0);
-  const avgOffering = filteredOffering.length
-    ? Math.round(totalCollected / filteredOffering.length)
-    : 0;
+  const totalDirectIncome = filteredOffering.reduce(
+    (total, record) => total + record.directIncome,
+    0
+  );
   const discrepancy = totalCollected - totalBanked;
 
   const attendanceChartData = groupByPeriod(
@@ -294,12 +299,31 @@ export default function AdminAnalyticsPage() {
   const offeringMax = Math.max(...offeringChartData.map((item) => item.value), 1);
 
   const attendanceTableRows = filteredAttendance.map((record) => ({
+    id: record.id,
     date: formatDate(record.date),
     serviceType: record.serviceType,
     total: record.male + record.female + record.children,
     detail: `${record.male}M / ${record.female}F / ${record.children} children`,
     extra: String(record.firstTimers),
   }));
+  const attendanceTotalPages = Math.max(
+    1,
+    Math.ceil(attendanceTableRows.length / ANALYTICS_PAGE_SIZE)
+  );
+  const currentAttendancePage = Math.min(attendancePage, attendanceTotalPages);
+  const paginatedAttendanceRows = attendanceTableRows.slice(
+    (currentAttendancePage - 1) * ANALYTICS_PAGE_SIZE,
+    currentAttendancePage * ANALYTICS_PAGE_SIZE
+  );
+  const offeringTotalPages = Math.max(
+    1,
+    Math.ceil(filteredOffering.length / ANALYTICS_PAGE_SIZE)
+  );
+  const currentOfferingPage = Math.min(offeringPage, offeringTotalPages);
+  const paginatedOffering = filteredOffering.slice(
+    (currentOfferingPage - 1) * ANALYTICS_PAGE_SIZE,
+    currentOfferingPage * ANALYTICS_PAGE_SIZE
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
@@ -314,7 +338,7 @@ export default function AdminAnalyticsPage() {
                 Analytics
               </h1>
               <p className="mt-0.5 text-sm text-stone-500 dark:text-neutral-400">
-                Attendance and offering trends from submitted reports
+                Attendance and finance trends from submitted reports
               </p>
             </div>
 
@@ -323,7 +347,11 @@ export default function AdminAnalyticsPage() {
                 <Building2 size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
                 <select
                   value={selectedServiceType}
-                  onChange={(event) => setServiceTypeFilter(event.target.value)}
+                  onChange={(event) => {
+                    setServiceTypeFilter(event.target.value);
+                    setAttendancePage(1);
+                    setOfferingPage(1);
+                  }}
                   className="cursor-pointer appearance-none rounded-xl border border-stone-200 bg-white py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white dark:focus:border-neutral-500"
                 >
                   {serviceTypes.map((serviceType) => (
@@ -368,7 +396,7 @@ export default function AdminAnalyticsPage() {
           <div className="mb-6 flex w-fit items-center gap-1 rounded-2xl border border-stone-200 bg-white p-1 dark:border-neutral-800 dark:bg-neutral-900">
             {([
               { id: "attendance", label: "Attendance", icon: Users },
-              { id: "offering", label: "Offering", icon: BarChart2 },
+              { id: "offering", label: "Finance", icon: BarChart2 },
             ] as const).map((tab) => {
               const Icon = tab.icon;
               return (
@@ -462,12 +490,14 @@ export default function AdminAnalyticsPage() {
                     Attendance records
                   </h2>
                 </div>
-                <DataTable rows={attendanceTableRows} extraHeader="First timers" />
-                <div className="border-t border-stone-100 px-5 py-3 dark:border-neutral-800">
-                  <p className="text-xs text-stone-400 dark:text-neutral-500">
-                    {filteredAttendance.length} services
-                  </p>
-                </div>
+                <DataTable rows={paginatedAttendanceRows} extraHeader="First timers" />
+                <PaginationControls
+                  page={currentAttendancePage}
+                  pageSize={ANALYTICS_PAGE_SIZE}
+                  totalItems={attendanceTableRows.length}
+                  itemLabel="services"
+                  onPageChange={setAttendancePage}
+                />
               </div>
             </>
           )}
@@ -476,22 +506,22 @@ export default function AdminAnalyticsPage() {
             <>
               <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <StatCard
-                  label="Total collected"
+                  label="Total income"
                   value={formatCurrency(totalCollected)}
-                  sub="Ushering and finance reports"
+                  sub="Offering, tithes, seeds, and other"
                   trend={totalCollected > 0 ? "up" : "neutral"}
                   icon={BarChart2}
                 />
                 <StatCard
-                  label="Total banked"
+                  label="Banked/deposited"
                   value={formatCurrency(totalBanked)}
                   sub="Confirmed by finance"
                   icon={TrendingUp}
                 />
                 <StatCard
-                  label="Average per service"
-                  value={formatCurrency(avgOffering)}
-                  sub="Per offering record"
+                  label="Direct income"
+                  value={formatCurrency(totalDirectIncome)}
+                  sub="Non-usher money received by finance"
                   icon={BarChart2}
                 />
                 <StatCard
@@ -506,11 +536,11 @@ export default function AdminAnalyticsPage() {
               <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="mb-1 flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
-                    Offering collected by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
+                    Finance income by {period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "year"}
                   </h2>
                 </div>
                 <p className="mb-2 text-xs text-stone-400 dark:text-neutral-500">
-                  Total offering collected
+                  Offering + tithe + seed envelopes + direct non-usher income
                 </p>
                 <BarChart
                   data={offeringChartData}
@@ -524,10 +554,10 @@ export default function AdminAnalyticsPage() {
                 <BarChart2 size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <div>
                   <p className="mb-1 text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Two-source offering tracking
+                    Separated finance tracking
                   </p>
                   <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-                    Ushering records what was collected. Finance records what was banked. Differences are shown for reconciliation.
+                    Ushers record each envelope they hand over. Finance confirms those same categories and records direct income that never passes through ushers.
                   </p>
                 </div>
               </div>
@@ -535,14 +565,14 @@ export default function AdminAnalyticsPage() {
               <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="border-b border-stone-100 px-5 py-4 dark:border-neutral-800">
                   <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
-                    Offering records
+                    Finance records
                   </h2>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-stone-100 dark:border-neutral-800">
-                        {["Date", "Service type", "Collected", "Banked", "Difference"].map((heading) => (
+                        {["Date", "Service type", "Total income", "Envelope breakdown", "Direct income", "Banked", "Difference"].map((heading) => (
                           <th
                             key={heading}
                             className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 first:px-5 dark:text-neutral-500"
@@ -555,17 +585,17 @@ export default function AdminAnalyticsPage() {
                     <tbody className="divide-y divide-stone-50 dark:divide-neutral-800/60">
                       {filteredOffering.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-5 py-10 text-center text-sm text-stone-400 dark:text-neutral-500">
-                            No offering records yet
+                          <td colSpan={7} className="px-5 py-10 text-center text-sm text-stone-400 dark:text-neutral-500">
+                            No finance records yet
                           </td>
                         </tr>
                       ) : (
-                        filteredOffering.map((record) => {
+                        paginatedOffering.map((record) => {
                           const diff = record.collected - record.banked;
 
                           return (
                             <tr
-                              key={`${record.date}-${record.serviceType}`}
+                              key={record.id}
                               className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40"
                             >
                               <td className="whitespace-nowrap px-5 py-3 text-sm font-medium text-stone-800 dark:text-neutral-200">
@@ -576,6 +606,25 @@ export default function AdminAnalyticsPage() {
                               </td>
                               <td className="px-4 py-3 text-sm font-semibold text-stone-900 dark:text-white">
                                 {formatCurrency(record.collected)}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-stone-500 dark:text-neutral-400">
+                                <p>Offering: {formatCurrency(record.offeringCollected)}</p>
+                                <p>Tithe: {formatCurrency(record.titheCollected)}</p>
+                                <p>Seed/donation: {formatCurrency(record.seedCollected)}</p>
+                                <p className="mt-1 text-[11px] text-stone-400 dark:text-neutral-500">
+                                  Ushers: {formatCurrency(record.usherHandoverTotal)} / Finance:{" "}
+                                  {formatCurrency(record.financeHandoverTotal)}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-stone-500 dark:text-neutral-400">
+                                <p className="font-medium text-stone-700 dark:text-neutral-300">
+                                  {formatCurrency(record.directIncome)}
+                                </p>
+                                {record.otherIncomeSource && (
+                                  <p className="mt-1 max-w-xs text-[11px] text-stone-400 dark:text-neutral-500">
+                                    {record.otherIncomeSource}
+                                  </p>
+                                )}
                               </td>
                               <td className="px-4 py-3 text-sm text-stone-700 dark:text-neutral-300">
                                 {formatCurrency(record.banked)}
@@ -598,11 +647,13 @@ export default function AdminAnalyticsPage() {
                     </tbody>
                   </table>
                 </div>
-                <div className="border-t border-stone-100 px-5 py-3 dark:border-neutral-800">
-                  <p className="text-xs text-stone-400 dark:text-neutral-500">
-                    {filteredOffering.length} records
-                  </p>
-                </div>
+                <PaginationControls
+                  page={currentOfferingPage}
+                  pageSize={ANALYTICS_PAGE_SIZE}
+                  totalItems={filteredOffering.length}
+                  itemLabel="records"
+                  onPageChange={setOfferingPage}
+                />
               </div>
             </>
           )}

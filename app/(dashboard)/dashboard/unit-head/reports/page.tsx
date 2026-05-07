@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {
+  Building2,
   Calendar,
   Eye,
   FileText,
@@ -13,6 +14,7 @@ import {
 import Link from "next/link";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import PaginationControls from "@/src/components/PaginationControls";
 import ReportStatusPill from "@/src/components/reports/ReportStatusPill";
 import { UNIT_HEAD_DASHBOARD_QUERY } from "@/src/lib/graphqlDocuments";
 import {
@@ -35,6 +37,9 @@ function SkeletonRow() {
         <div className="h-3.5 w-24 rounded bg-stone-200 dark:bg-neutral-800" />
       </td>
       <td className="px-4 py-3.5">
+        <div className="h-3.5 w-24 rounded bg-stone-200 dark:bg-neutral-800" />
+      </td>
+      <td className="px-4 py-3.5">
         <div className="h-6 w-20 rounded-full bg-stone-200 dark:bg-neutral-800" />
       </td>
       <td className="px-4 py-3.5">
@@ -48,6 +53,7 @@ export default function UnitHeadReportsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "reviewed">("all");
+  const [unitFilter, setUnitFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
   const [page, setPage] = useState(1);
 
@@ -61,17 +67,26 @@ export default function UnitHeadReportsPage() {
   const me = data?.me ?? null;
   const reports = useMemo(() => data?.reports ?? [], [data?.reports]);
   const sidebarUser = toSidebarUser(me);
+  const headedUnits = me?.units?.length ? me.units : me?.unit ? [me.unit] : [];
 
   const sortedReports = useMemo(() => sortReportsNewest(reports), [reports]);
   const filteredReports = sortedReports.filter((report) => {
-    const matchesSearch = report.title.toLowerCase().includes(search.toLowerCase());
+    const query = search.toLowerCase();
+    const matchesSearch =
+      report.title.toLowerCase().includes(query) ||
+      (report.unit?.name ?? "").toLowerCase().includes(query);
     const matchesStatus = statusFilter === "all" || report.status === statusFilter;
+    const matchesUnit = unitFilter === "all" || report.unit?.id === unitFilter;
     const matchesDate = !dateFilter || report.createdAt.slice(0, 10) >= dateFilter;
-    return matchesSearch && matchesStatus && matchesDate;
+    return matchesSearch && matchesStatus && matchesUnit && matchesDate;
   });
 
-  const paginatedReports = filteredReports.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(filteredReports.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedReports = filteredReports.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
   const pendingCount = reports.filter((report) => report.status === "pending").length;
   const reviewedCount = reports.filter((report) => report.status === "reviewed").length;
 
@@ -93,7 +108,7 @@ export default function UnitHeadReportsPage() {
                 My reports
               </h1>
               <p className="mt-0.5 text-sm text-stone-500 dark:text-neutral-400">
-                All reports submitted by you
+                Reports across all units you head
               </p>
             </div>
             <Link
@@ -150,6 +165,30 @@ export default function UnitHeadReportsPage() {
                   />
                 </div>
 
+                {headedUnits.length > 1 && (
+                  <div className="relative">
+                    <Building2
+                      size={13}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-neutral-500"
+                    />
+                    <select
+                      value={unitFilter}
+                      onChange={(event) => {
+                        setUnitFilter(event.target.value);
+                        resetPage();
+                      }}
+                      className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
+                    >
+                      <option value="all">All units</option>
+                      {headedUnits.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="relative">
                   <Calendar
                     size={13}
@@ -185,11 +224,12 @@ export default function UnitHeadReportsPage() {
                   </select>
                 </div>
 
-                {(search || statusFilter !== "all" || dateFilter) && (
+                {(search || statusFilter !== "all" || unitFilter !== "all" || dateFilter) && (
                   <button
                     onClick={() => {
                       setSearch("");
                       setStatusFilter("all");
+                      setUnitFilter("all");
                       setDateFilter("");
                       resetPage();
                     }}
@@ -207,6 +247,9 @@ export default function UnitHeadReportsPage() {
                   <tr className="border-b border-stone-100 dark:border-neutral-800">
                     <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                       Title
+                    </th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+                      Unit
                     </th>
                     <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500">
                       Date submitted
@@ -229,22 +272,22 @@ export default function UnitHeadReportsPage() {
                     </>
                   ) : paginatedReports.length === 0 ? (
                     <tr>
-                      <td colSpan={4}>
+                      <td colSpan={5}>
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 dark:bg-neutral-800">
                             <FileText size={18} className="text-stone-400 dark:text-neutral-500" />
                           </div>
                           <p className="text-sm font-medium text-stone-700 dark:text-neutral-300">
-                            {search || statusFilter !== "all" || dateFilter
+                            {search || statusFilter !== "all" || unitFilter !== "all" || dateFilter
                               ? "No reports match your filters"
                               : "No reports yet"}
                           </p>
                           <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
-                            {search || statusFilter !== "all" || dateFilter
+                            {search || statusFilter !== "all" || unitFilter !== "all" || dateFilter
                               ? "Try adjusting your search or filters"
                               : "Submit your first report to get started"}
                           </p>
-                          {!search && statusFilter === "all" && !dateFilter && (
+                          {!search && statusFilter === "all" && unitFilter === "all" && !dateFilter && (
                             <Link
                               href="/dashboard/unit-head/submit"
                               className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-xs font-medium text-white transition-all hover:opacity-85 dark:bg-white dark:text-stone-900"
@@ -264,6 +307,9 @@ export default function UnitHeadReportsPage() {
                       >
                         <td className="px-5 py-3.5 text-sm font-medium text-stone-800 dark:text-neutral-200">
                           {report.title}
+                        </td>
+                        <td className="px-4 py-3.5 text-stone-500 dark:text-neutral-400">
+                          {report.unit?.name ?? "-"}
                         </td>
                         <td className="px-4 py-3.5 text-stone-500 dark:text-neutral-400">
                           {formatDate(report.createdAt)}
@@ -287,50 +333,14 @@ export default function UnitHeadReportsPage() {
               </table>
             </div>
 
-            {!loading && filteredReports.length > PAGE_SIZE && (
-              <div className="flex items-center justify-between border-t border-stone-100 px-5 py-3 dark:border-neutral-800">
-                <p className="text-xs text-stone-400 dark:text-neutral-500">
-                  Showing {(page - 1) * PAGE_SIZE + 1}-
-                  {Math.min(page * PAGE_SIZE, filteredReports.length)} of {filteredReports.length}
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage((current) => Math.max(1, current - 1))}
-                    disabled={page === 1}
-                    className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs text-stone-600 transition-all hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
-                  >
-                    Previous
-                  </button>
-                  {[...Array(totalPages)].map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setPage(index + 1)}
-                      className={`h-7 w-7 rounded-lg text-xs transition-all ${
-                        page === index + 1
-                          ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900"
-                          : "border border-stone-200 text-stone-600 hover:bg-stone-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
-                      }`}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                    disabled={page === totalPages}
-                    className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs text-stone-600 transition-all hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!loading && filteredReports.length > 0 && filteredReports.length <= PAGE_SIZE && (
-              <div className="border-t border-stone-100 px-5 py-3 dark:border-neutral-800">
-                <p className="text-xs text-stone-400 dark:text-neutral-500">
-                  {filteredReports.length} report{filteredReports.length !== 1 ? "s" : ""}
-                </p>
-              </div>
+            {!loading && (
+              <PaginationControls
+                page={currentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filteredReports.length}
+                itemLabel="reports"
+                onPageChange={setPage}
+              />
             )}
           </div>
         </main>

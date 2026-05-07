@@ -7,6 +7,7 @@ export interface IUser extends Document {
   passwordHash: string;
   role: UserRole;
   unitId?: mongoose.Types.ObjectId;
+  unitIds?: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +29,10 @@ const UserSchema = new Schema<IUser>(
       type: Schema.Types.ObjectId,
       ref: "Unit",
       required: false,
+    },
+    unitIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: "Unit" }],
+      default: undefined,
     },
   },
   { timestamps: true }

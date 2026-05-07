@@ -64,7 +64,9 @@ export interface GraphQLUser {
   email: string;
   role: SidebarUser["role"];
   unitId?: string | null;
+  unitIds?: string[];
   unit?: GraphQLUnit | null;
+  units?: GraphQLUnit[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -87,6 +89,7 @@ export interface GraphQLReport {
 }
 
 export interface AttendanceRecord {
+  id: string;
   date: string;
   serviceType: string;
   male: number;
@@ -96,10 +99,25 @@ export interface AttendanceRecord {
 }
 
 export interface OfferingRecord {
+  id: string;
   date: string;
   serviceType: string;
+  usheringCollected: number;
+  usheringTithe: number;
+  usheringSeed: number;
+  usherHandoverTotal: number;
+  financeOffering: number;
+  offeringCollected: number;
+  titheCollected: number;
+  seedCollected: number;
+  titheReceived: number;
+  specialSeedReceived: number;
+  financeHandoverTotal: number;
+  otherIncomeReceived: number;
+  directIncome: number;
   collected: number;
   banked: number;
+  otherIncomeSource: string;
 }
 
 export function formatDate(iso: string) {
@@ -143,10 +161,18 @@ export function getInitials(name: string) {
 }
 
 export function toSidebarUser(user: GraphQLUser | null | undefined): SidebarUser {
+  const unitNames =
+    user?.units && user.units.length > 0
+      ? user.units.map((unit) => unit.name)
+      : user?.unit
+        ? [user.unit.name]
+        : [];
+
   return {
     name: user?.name ?? "User",
     role: user?.role ?? "UNIT_HEAD",
-    unit: user?.unit?.name ?? undefined,
+    unit: unitNames[0],
+    units: unitNames,
   };
 }
 
@@ -204,6 +230,7 @@ export function isWithinLastDays(iso: string, days: number) {
 export function buildAttendanceRecords(reports: GraphQLReport[]): AttendanceRecord[] {
   return reports
     .map((report) => ({
+      id: report.id,
       date: report.createdAt,
       serviceType: getServiceType(report),
       male: getFieldNumber(report, "maleCount"),
@@ -224,10 +251,25 @@ export function buildOfferingRecords(reports: GraphQLReport[]): OfferingRecord[]
       ? `${serviceTitle}:${serviceType.toLowerCase()}`
       : `${report.createdAt.slice(0, 10)}:${serviceType.toLowerCase()}`;
     const current = keyed[key] ?? {
+      id: key,
       date: report.createdAt,
       serviceType,
+      usheringCollected: 0,
+      usheringTithe: 0,
+      usheringSeed: 0,
+      usherHandoverTotal: 0,
+      financeOffering: 0,
+      offeringCollected: 0,
+      titheCollected: 0,
+      seedCollected: 0,
+      titheReceived: 0,
+      specialSeedReceived: 0,
+      financeHandoverTotal: 0,
+      otherIncomeReceived: 0,
+      directIncome: 0,
       collected: 0,
       banked: 0,
+      otherIncomeSource: "",
     };
 
     if (new Date(report.createdAt).getTime() < new Date(current.date).getTime()) {
@@ -235,20 +277,80 @@ export function buildOfferingRecords(reports: GraphQLReport[]): OfferingRecord[]
     }
 
     const usheringCollected = getFieldNumber(report, "offeringAmount");
+    const usheringTithe = getFieldNumber(report, "titheAmount");
+    const usheringSeed = getFieldNumber(report, "seedAmount");
     const financeCollected = getFieldNumber(report, "offeringReceived");
     const financeBanked = getFieldNumber(report, "offeringBanked");
+    const totalIncomeBanked = getFieldNumber(report, "totalIncomeBanked");
+    const titheReceived = getFieldNumber(report, "titheReceived");
+    const specialSeedReceived = getFieldNumber(report, "specialSeedReceived");
+    const otherIncomeReceived = getFieldNumber(report, "otherIncomeReceived");
+    const otherIncomeSource = getFieldString(report, "otherIncomeSource").trim();
 
     if (usheringCollected > 0) {
-      current.collected = Math.max(current.collected, usheringCollected);
+      current.usheringCollected = Math.max(current.usheringCollected, usheringCollected);
+    }
+
+    if (usheringTithe > 0) {
+      current.usheringTithe = Math.max(current.usheringTithe, usheringTithe);
+    }
+
+    if (usheringSeed > 0) {
+      current.usheringSeed = Math.max(current.usheringSeed, usheringSeed);
     }
 
     if (financeCollected > 0) {
-      current.collected = Math.max(current.collected, financeCollected);
+      current.financeOffering = Math.max(current.financeOffering, financeCollected);
     }
 
-    if (financeBanked > 0) {
-      current.banked = Math.max(current.banked, financeBanked);
+    if (titheReceived > 0) {
+      current.titheReceived = Math.max(current.titheReceived, titheReceived);
     }
+
+    if (specialSeedReceived > 0) {
+      current.specialSeedReceived = Math.max(current.specialSeedReceived, specialSeedReceived);
+    }
+
+    if (otherIncomeReceived > 0) {
+      current.otherIncomeReceived = Math.max(current.otherIncomeReceived, otherIncomeReceived);
+    }
+
+    if (otherIncomeSource && !current.otherIncomeSource.includes(otherIncomeSource)) {
+      current.otherIncomeSource = current.otherIncomeSource
+        ? `${current.otherIncomeSource}; ${otherIncomeSource}`
+        : otherIncomeSource;
+    }
+
+    const bankedAmount = totalIncomeBanked > 0 ? totalIncomeBanked : financeBanked;
+    if (bankedAmount > 0) {
+      current.banked = Math.max(current.banked, bankedAmount);
+    }
+
+    current.offeringCollected = Math.max(
+      current.offeringCollected,
+      current.usheringCollected,
+      current.financeOffering
+    );
+    current.titheCollected = Math.max(
+      current.titheCollected,
+      current.usheringTithe,
+      current.titheReceived
+    );
+    current.seedCollected = Math.max(
+      current.seedCollected,
+      current.usheringSeed,
+      current.specialSeedReceived
+    );
+    current.usherHandoverTotal =
+      current.usheringCollected + current.usheringTithe + current.usheringSeed;
+    current.financeHandoverTotal =
+      current.financeOffering + current.titheReceived + current.specialSeedReceived;
+    current.directIncome = current.otherIncomeReceived;
+    current.collected =
+      current.offeringCollected +
+      current.titheCollected +
+      current.seedCollected +
+      current.directIncome;
 
     keyed[key] = current;
   }

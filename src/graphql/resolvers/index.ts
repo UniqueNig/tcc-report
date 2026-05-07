@@ -23,6 +23,7 @@ type CreateUserInput = {
   password: string;
   role: UserRole;
   unitId?: string | null;
+  unitIds?: string[] | null;
 };
 
 type UpdateUserInput = Partial<Omit<CreateUserInput, "password">> & {
@@ -52,6 +53,7 @@ type ReportSectionInput = {
 
 type CreateReportInput = {
   title: string;
+  unitId?: string | null;
   sections: ReportSectionInput[];
   attachmentUrl?: string | null;
   attachmentName?: string | null;
@@ -111,6 +113,58 @@ function toObjectId(id: string): mongoose.Types.ObjectId {
   return new mongoose.Types.ObjectId(id);
 }
 
+function uniqueIds(ids: string[]): string[] {
+  return ids.filter((id, index, values) => Boolean(id) && values.indexOf(id) === index);
+}
+
+function getUserUnitIds(user: Pick<IUser, "unitId" | "unitIds"> | JWTPayload): string[] {
+  return uniqueIds([
+    ...("unitIds" in user && Array.isArray(user.unitIds) ? user.unitIds.map(toId) : []),
+    ...("unitId" in user && user.unitId ? [toId(user.unitId)] : []),
+  ]);
+}
+
+function setUserUnitAssignmentFields(user: IUser, unitIdsInput: string[]) {
+  const unitIds = uniqueIds(unitIdsInput);
+
+  if (unitIds.length === 0) {
+    user.set("unitIds", undefined);
+    user.set("unitId", undefined);
+  } else {
+    const unitObjectIds = unitIds.map(toObjectId);
+    user.set("unitIds", unitObjectIds);
+    user.set("unitId", unitObjectIds[0]);
+  }
+
+  user.markModified("unitIds");
+  user.markModified("unitId");
+}
+
+async function getUnitHeadUnitIds(userId: string): Promise<string[]> {
+  const user = await User.findById(toObjectId(userId)).select("unitId unitIds").exec();
+  return user ? getUserUnitIds(user) : [];
+}
+
+function normalizeInputUnitIds(input: {
+  role?: UserRole | null;
+  unitId?: string | null;
+  unitIds?: string[] | null;
+}): string[] | undefined {
+  if (input.role !== undefined && input.role !== "UNIT_HEAD") {
+    return [];
+  }
+
+  if (input.unitIds !== undefined && input.unitIds !== null) {
+    return uniqueIds(input.unitIds.map((unitId) => unitId.trim()).filter(Boolean));
+  }
+
+  if (input.unitId !== undefined) {
+    return input.unitId ? [input.unitId] : [];
+  }
+
+  return undefined;
+}
+
 function requireUser(ctx: GraphQLContext): JWTPayload {
   if (!ctx.user) {
     throw new GraphQLError("You must be signed in", {
@@ -142,7 +196,8 @@ async function assertCanAccessReport(user: JWTPayload, report: IReport): Promise
 
   if (user.role === "UNIT_HEAD") {
     const ownsReport = toId(report.submittedBy) === user.id;
-    const ownsUnit = Boolean(user.unitId) && toId(report.unitId) === user.unitId;
+    const unitIds = await getUnitHeadUnitIds(user.id);
+    const ownsUnit = unitIds.includes(toId(report.unitId));
     if (ownsReport || ownsUnit) return;
   }
 
@@ -209,7 +264,17 @@ function dateString(value?: Date | null): string | null {
 async function assignUnitHead(unitId: string, headId?: string | null) {
   const unitObjectId = toObjectId(unitId);
 
-  await User.updateMany({ role: "UNIT_HEAD", unitId: unitObjectId }, { $unset: { unitId: "" } }).exec();
+  const previousHeads = await User.find({
+    role: "UNIT_HEAD",
+    ...(headId ? { _id: { $ne: toObjectId(headId) } } : {}),
+    $or: [{ unitId: unitObjectId }, { unitIds: unitObjectId }],
+  }).exec();
+
+  for (const previousHead of previousHeads) {
+    const remainingUnitIds = getUserUnitIds(previousHead).filter((id) => id !== unitId);
+    setUserUnitAssignmentFields(previousHead, remainingUnitIds);
+    await previousHead.save();
+  }
 
   if (!headId) return;
 
@@ -220,33 +285,40 @@ async function assignUnitHead(unitId: string, headId?: string | null) {
     });
   }
 
-  head.unitId = unitObjectId;
+  const unitIds = getUserUnitIds(head);
+  if (!unitIds.includes(unitId)) unitIds.push(unitId);
+  setUserUnitAssignmentFields(head, unitIds);
   await head.save();
 }
 
-async function syncUserUnitAssignment(user: IUser, unitId?: string | null) {
+async function syncUserUnitAssignment(user: IUser, unitIdsInput?: string[] | null) {
   if (user.role !== "UNIT_HEAD") {
-    user.unitId = undefined;
+    setUserUnitAssignmentFields(user, []);
     return;
   }
 
-  if (!unitId) {
-    user.unitId = undefined;
+  const unitIds = uniqueIds(unitIdsInput ?? []);
+
+  if (unitIds.length === 0) {
+    setUserUnitAssignmentFields(user, []);
     return;
   }
 
-  const unitObjectId = toObjectId(unitId);
+  const unitObjectIds = unitIds.map(toObjectId);
 
-  await User.updateMany(
-    {
-      role: "UNIT_HEAD",
-      unitId: unitObjectId,
-      _id: { $ne: user._id },
-    },
-    { $unset: { unitId: "" } }
-  ).exec();
+  const affectedHeads = await User.find({
+    role: "UNIT_HEAD",
+    _id: { $ne: user._id },
+    $or: [{ unitId: { $in: unitObjectIds } }, { unitIds: { $in: unitObjectIds } }],
+  }).exec();
 
-  user.unitId = unitObjectId;
+  for (const affectedHead of affectedHeads) {
+    const remainingUnitIds = getUserUnitIds(affectedHead).filter((id) => !unitIds.includes(id));
+    setUserUnitAssignmentFields(affectedHead, remainingUnitIds);
+    await affectedHead.save();
+  }
+
+  setUserUnitAssignmentFields(user, unitIds);
 }
 
 export const resolvers = {
@@ -291,7 +363,11 @@ export const resolvers = {
       if (status) filter.status = status;
 
       if (user.role === "UNIT_HEAD") {
-        filter.submittedBy = toObjectId(user.id);
+        const unitIds = await getUnitHeadUnitIds(user.id);
+        filter.$or = [
+          { submittedBy: toObjectId(user.id) },
+          ...(unitIds.length > 0 ? [{ unitId: { $in: unitIds.map(toObjectId) } }] : []),
+        ];
       }
 
       if (user.role === "CORE_LEADER") {
@@ -309,10 +385,22 @@ export const resolvers = {
             });
           }
         }
+        if (user.role === "UNIT_HEAD") {
+          const unitIds = await getUnitHeadUnitIds(user.id);
+          if (!unitIds.includes(args.unitId)) {
+            throw new GraphQLError("You do not head this unit", {
+              extensions: { code: "FORBIDDEN" },
+            });
+          }
+          delete filter.$or;
+        }
         filter.unitId = requestedUnitId;
       }
 
-      if (args.mine) filter.submittedBy = toObjectId(user.id);
+      if (args.mine) {
+        delete filter.$or;
+        filter.submittedBy = toObjectId(user.id);
+      }
 
       return Report.find(filter).sort({ createdAt: -1 }).exec();
     },
@@ -358,7 +446,7 @@ export const resolvers = {
         role: args.input.role,
       });
 
-      await syncUserUnitAssignment(user, args.input.unitId);
+      await syncUserUnitAssignment(user, normalizeInputUnitIds(args.input));
       await user.save();
       return user;
     },
@@ -383,8 +471,9 @@ export const resolvers = {
         user.passwordHash = await bcrypt.hash(args.input.password, 10);
       }
 
-      if (args.input.unitId !== undefined || args.input.role !== undefined) {
-        await syncUserUnitAssignment(user, args.input.unitId);
+      const unitIdsInput = normalizeInputUnitIds(args.input);
+      if (unitIdsInput !== undefined || args.input.role !== undefined) {
+        await syncUserUnitAssignment(user, unitIdsInput ?? getUserUnitIds(user));
       }
 
       await user.save();
@@ -477,7 +566,9 @@ export const resolvers = {
       }
 
       await unit.save();
-      await assignUnitHead(toId(unit._id), args.input.headId);
+      if (Object.prototype.hasOwnProperty.call(args.input, "headId")) {
+        await assignUnitHead(toId(unit._id), args.input.headId);
+      }
       return unit;
     },
 
@@ -491,7 +582,15 @@ export const resolvers = {
         });
       }
 
-      await User.updateMany({ unitId }, { $unset: { unitId: "" } }).exec();
+      const assignedHeads = await User.find({
+        role: "UNIT_HEAD",
+        $or: [{ unitId }, { unitIds: unitId }],
+      }).exec();
+      for (const assignedHead of assignedHeads) {
+        const remainingUnitIds = getUserUnitIds(assignedHead).filter((id) => id !== args.id);
+        setUserUnitAssignmentFields(assignedHead, remainingUnitIds);
+        await assignedHead.save();
+      }
       const result = await Unit.findByIdAndDelete(unitId).exec();
       return Boolean(result);
     },
@@ -502,9 +601,21 @@ export const resolvers = {
       ctx: GraphQLContext
     ) => {
       const user = requireRole(ctx, ["UNIT_HEAD"]);
-      if (!user.unitId) {
+      const unitIds = await getUnitHeadUnitIds(user.id);
+      if (unitIds.length === 0) {
         throw new GraphQLError("Your account is not assigned to a unit", {
           extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const selectedUnitId = args.input.unitId ?? (unitIds.length === 1 ? unitIds[0] : null);
+      if (!selectedUnitId) {
+        throw new GraphQLError("Select the unit this report is for", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      if (!unitIds.includes(selectedUnitId)) {
+        throw new GraphQLError("You do not head this unit", {
+          extensions: { code: "FORBIDDEN" },
         });
       }
 
@@ -520,7 +631,7 @@ export const resolvers = {
 
       return Report.create({
         title: args.input.title.trim(),
-        unitId: toObjectId(user.unitId),
+        unitId: toObjectId(selectedUnitId),
         submittedBy: toObjectId(user.id),
         sections,
         attachmentUrl: args.input.attachmentUrl ?? undefined,
@@ -586,8 +697,16 @@ export const resolvers = {
 
   User: {
     id: (user: IUser) => toId(user._id),
-    unitId: (user: IUser) => (user.unitId ? toId(user.unitId) : null),
-    unit: (user: IUser) => (user.unitId ? Unit.findById(user.unitId).exec() : null),
+    unitIds: (user: IUser) => getUserUnitIds(user),
+    unitId: (user: IUser) => getUserUnitIds(user)[0] ?? null,
+    unit: (user: IUser) => {
+      const unitId = getUserUnitIds(user)[0];
+      return unitId ? Unit.findById(toObjectId(unitId)).exec() : null;
+    },
+    units: (user: IUser) => {
+      const unitIds = getUserUnitIds(user);
+      return unitIds.length > 0 ? Unit.find({ _id: { $in: unitIds.map(toObjectId) } }).exec() : [];
+    },
     createdAt: (user: IUser) => user.createdAt.toISOString(),
     updatedAt: (user: IUser) => user.updatedAt.toISOString(),
   },
@@ -596,7 +715,15 @@ export const resolvers = {
     id: (unit: IUnit) => toId(unit._id),
     coreLeaderId: (unit: IUnit) => toId(unit.coreLeaderId),
     coreLeader: (unit: IUnit) => User.findById(unit.coreLeaderId).exec(),
-    unitHead: (unit: IUnit) => User.findOne({ role: "UNIT_HEAD", unitId: unit._id }).exec(),
+    unitHead: (unit: IUnit) => {
+      const unitId = toObjectId(toId(unit._id));
+      return User.findOne({
+        role: "UNIT_HEAD",
+        $or: [{ unitId }, { unitIds: unitId }],
+      })
+        .sort({ updatedAt: -1 })
+        .exec();
+    },
     formSchema: (unit: IUnit) => unit.formSchema ?? null,
     reportCount: (unit: IUnit) => Report.countDocuments({ unitId: unit._id }).exec(),
     pendingCount: (unit: IUnit) =>

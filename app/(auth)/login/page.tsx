@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -10,7 +11,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  Shield,
 } from "lucide-react";
 import { getRoleHomePath, type AppUserRole } from "@/src/lib/roleRoutes";
 
@@ -205,11 +205,16 @@ export default function LoginPage() {
 
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-            <Shield size={20} className="text-stone-700 dark:text-stone-300" />
-          </div>
+          <Image
+            src="/tcc-wordmark.png"
+            alt="The Communion Centre"
+            width={300}
+            height={194}
+            className="mx-auto mb-4 h-auto w-56 rounded-2xl object-contain shadow-sm"
+            priority
+          />
           <h1 className="text-lg font-semibold tracking-tight text-stone-900 dark:text-white">
-            Church Reporting
+            TCC Reports
           </h1>
           <p className="mt-1 text-sm text-stone-500 dark:text-neutral-400">
             Sign in to your account

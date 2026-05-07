@@ -1,8 +1,8 @@
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "ChurchReport — Reporting System",
-  description: "A modern reporting system for church leadership",
+  title: "Dashboard",
+  description: "The Communion Centre reporting dashboard",
 };
 
 export default function RootLayout({

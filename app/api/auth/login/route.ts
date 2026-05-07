@@ -36,12 +36,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const unitIds = [
+      ...(user.unitIds ?? []).map((unitId: { toString(): string }) => unitId.toString()),
+      ...(user.unitId ? [user.unitId.toString()] : []),
+    ].filter(
+      (unitId: string, index: number, values: string[]) =>
+        Boolean(unitId) && values.indexOf(unitId) === index
+    );
+
     const token = signToken({
       id: user._id.toString(),
       name: user.name,
       email: user.email,
       role: user.role,
-      unitId: user.unitId?.toString(),
+      unitId: unitIds[0],
+      unitIds,
     });
 
     await setAuthCookie(token);
@@ -52,7 +61,8 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
         role: user.role,
-        unitId: user.unitId?.toString(),
+        unitId: unitIds[0],
+        unitIds,
       },
     });
   } catch (error) {

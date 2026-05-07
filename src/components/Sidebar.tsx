@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   BarChart2,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -20,6 +21,7 @@ export type UserRole = "UNIT_HEAD" | "CORE_LEADER" | "ADMIN";
 export interface SidebarUser {
   name: string;
   unit?: string;
+  units?: string[];
   role: UserRole;
 }
 
@@ -76,6 +78,11 @@ export default function Sidebar({ open, onClose, user }: SidebarProps) {
   const [isPending, startTransition] = useTransition();
   const navItems = NAV_ITEMS[user.role];
   const roleLabel = ROLE_LABELS[user.role];
+  const assignedUnits = user.units?.length ? user.units : user.unit ? [user.unit] : [];
+  const footerDetail =
+    user.role === "UNIT_HEAD" && assignedUnits.length > 1
+      ? `${assignedUnits.length} assigned units`
+      : assignedUnits[0] ?? roleLabel;
 
   function isActive(href: string) {
     if (href === `/dashboard/${user.role.toLowerCase().replace("_", "-")}`) {
@@ -128,12 +135,22 @@ export default function Sidebar({ open, onClose, user }: SidebarProps) {
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 dark:border-neutral-800 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-stone-900 dark:bg-white flex items-center justify-center shrink-0">
-              <ShieldCheck size={13} className="text-white dark:text-stone-900" />
+            <Image
+              src="/tcc-logo.png"
+              alt="The Communion Centre"
+              width={128}
+              height={128}
+              className="h-10 w-10 shrink-0 rounded-lg object-cover"
+              priority
+            />
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-semibold tracking-tight text-stone-900 dark:text-white">
+                TCC Reports
+              </span>
+              <span className="block truncate text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-neutral-500">
+                The Communion Centre
+              </span>
             </div>
-            <span className="text-sm font-semibold text-stone-900 dark:text-white tracking-tight">
-              ChurchReport
-            </span>
           </div>
           <button
             onClick={onClose}
@@ -151,6 +168,24 @@ export default function Sidebar({ open, onClose, user }: SidebarProps) {
             {user.role === "UNIT_HEAD" && <FileText size={11} />}
             {roleLabel}
           </span>
+          {user.role === "UNIT_HEAD" && assignedUnits.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-stone-400 dark:text-neutral-500">
+                Assigned Units
+              </p>
+              <div className="max-h-28 space-y-1 overflow-y-auto pr-1">
+                {assignedUnits.map((unit) => (
+                  <div
+                    key={unit}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-stone-600 dark:text-neutral-400"
+                  >
+                    <Building2 size={12} className="shrink-0 text-stone-400 dark:text-neutral-500" />
+                    <span className="truncate">{unit}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
@@ -192,7 +227,7 @@ export default function Sidebar({ open, onClose, user }: SidebarProps) {
                 {user.name}
               </p>
               <p className="text-[11px] text-stone-400 dark:text-neutral-500 truncate">
-                {user.unit ?? roleLabel}
+                {footerDetail}
               </p>
             </div>
             <button

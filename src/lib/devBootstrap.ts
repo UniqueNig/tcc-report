@@ -78,7 +78,7 @@ export async function ensureDemoAccounts() {
   );
 
   await User.findByIdAndUpdate(unitHead._id, {
-    $set: { unitId: unit._id },
+    $set: { unitId: unit._id, unitIds: [unit._id] },
   });
 
   await User.findByIdAndUpdate(admin._id, {

@@ -26,6 +26,8 @@ export const typeDefs = gql`
     role: UserRole!
     unitId: ID
     unit: Unit
+    unitIds: [ID!]!
+    units: [Unit!]!
     createdAt: String!
     updatedAt: String!
   }
@@ -112,6 +114,7 @@ export const typeDefs = gql`
     password: String!
     role: UserRole!
     unitId: ID
+    unitIds: [ID!]
   }
 
   input UpdateUserInput {
@@ -120,6 +123,7 @@ export const typeDefs = gql`
     password: String
     role: UserRole
     unitId: ID
+    unitIds: [ID!]
   }
 
   input CreateUnitInput {
@@ -170,6 +174,7 @@ export const typeDefs = gql`
 
   input CreateReportInput {
     title: String!
+    unitId: ID
     sections: [ReportSectionInput!]!
     attachmentUrl: String
     attachmentName: String

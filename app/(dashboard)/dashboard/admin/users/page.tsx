@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/src/components/Sidebar";
 import Topbar from "@/src/components/Topbar";
+import PaginationControls from "@/src/components/PaginationControls";
 import {
   CREATE_USER_MUTATION,
   DELETE_USER_MUTATION,
@@ -36,10 +37,25 @@ interface AdminUser {
   email: string;
   role: UserRole;
   unitId?: string | null;
+  unitIds?: string[];
   unit?: {
     id: string;
     name: string;
+    unitHead?: {
+      id: string;
+      name: string;
+      email?: string;
+    } | null;
   } | null;
+  units?: {
+    id: string;
+    name: string;
+    unitHead?: {
+      id: string;
+      name: string;
+      email?: string;
+    } | null;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -70,7 +86,7 @@ interface UserForm {
   name: string;
   email: string;
   role: UserRole;
-  unitId: string;
+  unitIds: string[];
   password: string;
 }
 
@@ -90,11 +106,12 @@ const EMPTY_FORM: UserForm = {
   name: "",
   email: "",
   role: "UNIT_HEAD",
-  unitId: "",
+  unitIds: [],
   password: "",
 };
 
 const SKELETON_WIDTHS = ["72%", "88%", "64%", "80%", "58%"];
+const PAGE_SIZE = 10;
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong. Please try again.";
@@ -180,24 +197,46 @@ function UserModal({
   isSaving: boolean;
 }) {
   const [form, setForm] = useState<UserForm>(initial);
-  const [errors, setErrors] = useState<Partial<UserForm>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   function update(field: keyof UserForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function setUnitSelection(unitId: string, checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      unitIds: checked
+        ? Array.from(new Set([...current.unitIds, unitId]))
+        : current.unitIds.filter((id) => id !== unitId),
+    }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.unitIds;
+      return next;
+    });
   }
 
   function validate() {
-    const nextErrors: Partial<UserForm> = {};
+    const nextErrors: Record<string, string> = {};
     if (!form.name.trim()) nextErrors.name = "Name is required";
     if (!form.email.trim()) nextErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(form.email)) nextErrors.email = "Invalid email";
     if (mode === "create" && !form.password) nextErrors.password = "Password is required";
-    if (form.role === "UNIT_HEAD" && !form.unitId) nextErrors.unitId = "Please assign a unit";
+    if (form.role === "UNIT_HEAD" && form.unitIds.length === 0) {
+      nextErrors.unitIds = "Please assign at least one unit";
+    }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
+
+  const selectedUnits = units.filter((unit) => form.unitIds.includes(unit.id));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -291,8 +330,18 @@ function UserModal({
               <select
                 value={form.role}
                 onChange={(event) => {
-                  update("role", event.target.value);
-                  update("unitId", "");
+                  const role = event.target.value as UserRole;
+                  setForm((current) => ({
+                    ...current,
+                    role,
+                    unitIds: role === "UNIT_HEAD" ? current.unitIds : [],
+                  }));
+                  setErrors((current) => {
+                    const next = { ...current };
+                    delete next.role;
+                    if (role !== "UNIT_HEAD") delete next.unitIds;
+                    return next;
+                  });
                 }}
                 className="w-full cursor-pointer appearance-none rounded-xl border border-stone-200 bg-stone-50 py-2.5 pl-9 pr-8 text-sm text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
               >
@@ -309,40 +358,77 @@ function UserModal({
 
           {form.role === "UNIT_HEAD" && (
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-stone-500 dark:text-neutral-400">
-                Assigned unit <span className="text-red-400">*</span>
-              </label>
-              <div className="relative">
-                <Building2
-                  size={14}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 dark:text-neutral-500"
-                />
-                <select
-                  value={form.unitId}
-                  onChange={(event) => update("unitId", event.target.value)}
-                  className={`w-full cursor-pointer appearance-none rounded-xl border bg-stone-50 py-2.5 pl-9 pr-8 text-sm text-stone-900 outline-none transition-colors dark:bg-neutral-800 dark:text-white ${
-                    errors.unitId
-                      ? "border-red-400 dark:border-red-700"
-                      : "border-stone-200 focus:border-stone-400 dark:border-neutral-700 dark:focus:border-neutral-500"
-                  }`}
-                >
-                  <option value="">Select a unit</option>
-                  {units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={12}
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-400"
-                />
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="block text-xs font-medium text-stone-500 dark:text-neutral-400">
+                  Assigned units <span className="text-red-400">*</span>
+                </label>
+                <span className="text-[11px] text-stone-400 dark:text-neutral-500">
+                  {form.unitIds.length} selected
+                </span>
               </div>
-              {errors.unitId && (
+              <div
+                role="group"
+                aria-label="Assigned units"
+                className={`grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border bg-stone-50 p-2 sm:grid-cols-2 dark:bg-neutral-800 ${
+                  errors.unitIds
+                    ? "border-red-400 dark:border-red-700"
+                    : "border-stone-200 dark:border-neutral-700"
+                }`}
+              >
+                {units.map((unit) => {
+                  const isSelected = form.unitIds.includes(unit.id);
+
+                  return (
+                    <button
+                      key={unit.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setUnitSelection(unit.id, !isSelected)}
+                      className={`flex min-h-10 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition-colors ${
+                        isSelected
+                          ? "border-stone-900 bg-stone-900 text-white dark:border-white dark:bg-white dark:text-stone-900"
+                          : "border-stone-200 bg-white text-stone-700 hover:border-stone-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-600"
+                      }`}
+                    >
+                      {isSelected ? (
+                        <CheckCircle2 size={14} className="shrink-0" />
+                      ) : (
+                        <Building2
+                          size={14}
+                          className="shrink-0 text-stone-400 dark:text-neutral-500"
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{unit.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {errors.unitIds && (
                 <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
                   <AlertCircle size={11} />
-                  {errors.unitId}
+                  {errors.unitIds}
                 </p>
+              )}
+              {selectedUnits.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedUnits.map((unit) => (
+                    <span
+                      key={unit.id}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-medium text-stone-600 dark:bg-neutral-800 dark:text-neutral-300"
+                    >
+                      <Building2 size={11} className="shrink-0 text-stone-400" />
+                      <span className="max-w-40 truncate">{unit.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setUnitSelection(unit.id, false)}
+                        className="rounded-full text-stone-400 transition-colors hover:text-stone-700 dark:hover:text-white"
+                        aria-label={`Remove ${unit.name}`}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           )}
@@ -408,6 +494,7 @@ export default function AdminUsersPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
+  const [page, setPage] = useState(1);
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null);
@@ -420,7 +507,7 @@ export default function AdminUsersPage() {
 
   const [createUser, { loading: isCreating }] = useMutation<
     { createUser: AdminUser },
-    { input: { name: string; email: string; password: string; role: UserRole; unitId?: string | null } }
+    { input: { name: string; email: string; password: string; role: UserRole; unitIds?: string[] | null } }
   >(CREATE_USER_MUTATION);
   const [updateUser, { loading: isUpdating }] = useMutation<
     { updateUser: AdminUser },
@@ -431,7 +518,7 @@ export default function AdminUsersPage() {
         email: string;
         password?: string | null;
         role: UserRole;
-        unitId?: string | null;
+        unitIds?: string[] | null;
       };
     }
   >(UPDATE_USER_MUTATION);
@@ -458,11 +545,19 @@ export default function AdminUsersPage() {
         const matchesSearch =
           user.name.toLowerCase().includes(query) ||
           user.email.toLowerCase().includes(query) ||
-          (user.unit?.name ?? "").toLowerCase().includes(query);
+          (user.units?.map((unit) => unit.name).join(" ") ?? user.unit?.name ?? "")
+            .toLowerCase()
+            .includes(query);
         const matchesRole = roleFilter === "all" || user.role === roleFilter;
         return matchesSearch && matchesRole;
       }),
     [roleFilter, search, users]
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedUsers = filteredUsers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
   );
 
   const unitHeads = users.filter((user) => user.role === "UNIT_HEAD").length;
@@ -473,11 +568,12 @@ export default function AdminUsersPage() {
     setErrorMessage(null);
 
     try {
+      const unitIds = form.role === "UNIT_HEAD" ? Array.from(new Set(form.unitIds)) : [];
       const input = {
         name: form.name.trim(),
         email: form.email.trim(),
         role: form.role,
-        unitId: form.role === "UNIT_HEAD" ? form.unitId : null,
+        unitIds,
       };
 
       if (modalMode === "create") {
@@ -609,7 +705,10 @@ export default function AdminUsersPage() {
                     type="text"
                     placeholder="Search users..."
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }}
                     className="w-52 rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-8 pr-3 text-xs text-stone-900 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:placeholder:text-neutral-500 dark:focus:border-neutral-500"
                   />
                 </div>
@@ -620,7 +719,10 @@ export default function AdminUsersPage() {
                   />
                   <select
                     value={roleFilter}
-                    onChange={(event) => setRoleFilter(event.target.value as "all" | UserRole)}
+                    onChange={(event) => {
+                      setRoleFilter(event.target.value as "all" | UserRole);
+                      setPage(1);
+                    }}
                     className="cursor-pointer appearance-none rounded-lg border border-stone-200 bg-stone-50 py-1.5 pl-8 pr-7 text-xs text-stone-900 outline-none transition-colors focus:border-stone-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:focus:border-neutral-500"
                   >
                     <option value="all">All roles</option>
@@ -640,7 +742,7 @@ export default function AdminUsersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-stone-100 dark:border-neutral-800">
-                    {["User", "Email", "Role", "Assigned unit", "Joined", "Actions"].map(
+                    {["User", "Email", "Role", "Assigned units", "Joined", "Actions"].map(
                       (heading) => (
                         <th
                           key={heading}
@@ -672,7 +774,7 @@ export default function AdminUsersPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((user) => (
+                    paginatedUsers.map((user) => (
                       <tr
                         key={user.id}
                         className="transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800/40"
@@ -698,7 +800,14 @@ export default function AdminUsersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-sm text-stone-500 dark:text-neutral-400">
-                          {user.unit ? (
+                          {user.units && user.units.length > 0 ? (
+                            <span className="inline-flex max-w-xs items-center gap-1.5">
+                              <Building2 size={11} className="text-stone-400" />
+                              <span className="truncate">
+                                {user.units.map((unit) => unit.name).join(", ")}
+                              </span>
+                            </span>
+                          ) : user.unit ? (
                             <span className="inline-flex items-center gap-1.5">
                               <Building2 size={11} className="text-stone-400" />
                               {user.unit.name}
@@ -734,12 +843,22 @@ export default function AdminUsersPage() {
                 </tbody>
               </table>
             </div>
+            {!loading && (
+              <PaginationControls
+                page={currentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filteredUsers.length}
+                itemLabel="users"
+                onPageChange={setPage}
+              />
+            )}
           </div>
         </main>
       </div>
 
       {modalMode && (
         <UserModal
+          key={editingUser?.id ?? modalMode}
           mode={modalMode}
           initial={
             editingUser
@@ -747,7 +866,12 @@ export default function AdminUsersPage() {
                   name: editingUser.name,
                   email: editingUser.email,
                   role: editingUser.role,
-                  unitId: editingUser.unitId ?? "",
+                  unitIds:
+                    editingUser.unitIds && editingUser.unitIds.length > 0
+                      ? editingUser.unitIds
+                      : editingUser.unitId
+                        ? [editingUser.unitId]
+                        : [],
                   password: "",
                 }
               : EMPTY_FORM
