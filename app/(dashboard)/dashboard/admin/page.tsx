@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {
   AlertCircle,
@@ -19,9 +19,6 @@ import Topbar from "@/src/components/Topbar";
 import ReportStatusPill from "@/src/components/reports/ReportStatusPill";
 import { ADMIN_DASHBOARD_QUERY } from "@/src/lib/graphqlDocuments";
 import {
-  buildAttendanceRecords,
-  buildOfferingRecords,
-  formatCurrency,
   formatDate,
   getInitials,
   isWithinLastDays,
@@ -31,6 +28,13 @@ import {
   type GraphQLUnit,
   type GraphQLUser,
 } from "@/src/lib/dashboardHelpers";
+
+interface AdminDashboardData {
+  me: GraphQLUser | null;
+  users: GraphQLUser[];
+  units: GraphQLUnit[];
+  reports: GraphQLReport[];
+}
 
 function QuickLinkCard({
   icon: Icon,
@@ -42,7 +46,7 @@ function QuickLinkCard({
 }: {
   icon: React.ElementType;
   label: string;
-  value: number;
+  value: number | string;
   sub: string;
   href: string;
   colorClassName: string;
@@ -60,7 +64,10 @@ function QuickLinkCard({
           <Icon size={14} />
         </div>
       </div>
-      <p className="text-3xl font-semibold tracking-tight text-stone-900 dark:text-white">
+      <p
+        className="text-3xl font-semibold tracking-tight text-stone-900 dark:text-white"
+        suppressHydrationWarning
+      >
         {value}
       </p>
       <div className="mt-1 flex items-center justify-between">
@@ -73,38 +80,39 @@ function QuickLinkCard({
 
 export default function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [canFetchDashboard, setCanFetchDashboard] = useState(false);
+  const [dashboardData, setDashboardData] = useState<AdminDashboardData | null>(null);
 
-  const { data, loading } = useQuery<{
-    me: GraphQLUser | null;
-    users: GraphQLUser[];
-    units: GraphQLUnit[];
-    reports: GraphQLReport[];
-  }>(ADMIN_DASHBOARD_QUERY, {
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCanFetchDashboard(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const { data, loading, error } = useQuery<AdminDashboardData>(ADMIN_DASHBOARD_QUERY, {
     fetchPolicy: "network-only",
+    skip: !canFetchDashboard,
+    ssr: false,
   });
 
-  const me = data?.me ?? null;
-  const users = data?.users ?? [];
-  const units = data?.units ?? [];
-  const reports = useMemo(() => data?.reports ?? [], [data?.reports]);
+  useEffect(() => {
+    if (data) {
+      const timer = window.setTimeout(() => setDashboardData(data), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [data]);
+
+  const me = dashboardData?.me ?? null;
+  const users = dashboardData?.users ?? [];
+  const units = dashboardData?.units ?? [];
+  const reports = useMemo(() => dashboardData?.reports ?? [], [dashboardData?.reports]);
   const sidebarUser = toSidebarUser(me);
 
   const pendingCount = reports.filter((report) => report.status === "pending").length;
   const reviewedCount = reports.filter((report) => report.status === "reviewed").length;
   const thisWeekReports = reports.filter((report) => isWithinLastDays(report.createdAt, 7)).length;
   const latestReports = useMemo(() => sortReportsNewest(reports).slice(0, 5), [reports]);
-  const attendanceRecords = useMemo(() => buildAttendanceRecords(reports), [reports]);
-  const offeringRecords = useMemo(() => buildOfferingRecords(reports), [reports]);
-  const totalAttendance = attendanceRecords.reduce(
-    (total, record) => total + record.male + record.female + record.children,
-    0
-  );
-  const totalIncome = offeringRecords.reduce((total, record) => total + record.collected, 0);
-  const totalExpenditure = offeringRecords.reduce(
-    (total, record) => total + record.expenditure,
-    0
-  );
-  const netBalance = totalIncome - totalExpenditure;
+  const hasDashboardError = canFetchDashboard && Boolean(error);
+  const isDashboardLoading = loading || (!dashboardData && !hasDashboardError);
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-100 dark:bg-neutral-950">
@@ -122,6 +130,13 @@ export default function AdminDashboard() {
               Full visibility across all units, leaders, and reports
             </p>
           </div>
+
+          {hasDashboardError && (
+            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-950/50 dark:bg-red-950/30 dark:text-red-300">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              Could not load dashboard data. Refresh the page or sign in again.
+            </div>
+          )}
 
           <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <QuickLinkCard
@@ -164,7 +179,10 @@ export default function AdminDashboard() {
                 <TrendingUp size={18} className="text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-2xl font-semibold text-stone-900 dark:text-white">
+                <p
+                  className="text-2xl font-semibold text-stone-900 dark:text-white"
+                  suppressHydrationWarning
+                >
                   {thisWeekReports}
                 </p>
                 <p className="text-xs text-stone-400 dark:text-neutral-500">Reports this week</p>
@@ -175,7 +193,10 @@ export default function AdminDashboard() {
                 <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <p className="text-2xl font-semibold text-stone-900 dark:text-white">
+                <p
+                  className="text-2xl font-semibold text-stone-900 dark:text-white"
+                  suppressHydrationWarning
+                >
                   {reviewedCount}
                 </p>
                 <p className="text-xs text-stone-400 dark:text-neutral-500">Reports reviewed</p>
@@ -186,75 +207,14 @@ export default function AdminDashboard() {
                 <AlertCircle size={18} className="text-stone-500 dark:text-neutral-400" />
               </div>
               <div>
-                <p className="text-2xl font-semibold text-amber-600 dark:text-amber-400">
+                <p
+                  className="text-2xl font-semibold text-amber-600 dark:text-amber-400"
+                  suppressHydrationWarning
+                >
                   {pendingCount}
                 </p>
                 <p className="text-xs text-stone-400 dark:text-neutral-500">Still pending</p>
               </div>
-            </div>
-          </div>
-
-          <div className="mb-8 overflow-hidden rounded-2xl border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4 dark:border-neutral-800">
-              <div>
-                <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
-                  Attendance and finance snapshot
-                </h2>
-                <p className="mt-0.5 text-xs text-stone-400 dark:text-neutral-500">
-                  Live totals from submitted unit reports
-                </p>
-              </div>
-              <Link
-                href="/dashboard/admin/analytics"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 transition-colors hover:text-stone-900 dark:text-neutral-400 dark:hover:text-white"
-              >
-                Open analytics
-                <ArrowRight size={12} />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-1 gap-px bg-stone-100 dark:bg-neutral-800 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                {
-                  label: "Attendance",
-                  value: totalAttendance.toLocaleString(),
-                  sub: "Tracked across ushering reports",
-                  tone: "text-stone-900 dark:text-white",
-                },
-                {
-                  label: "Income",
-                  value: formatCurrency(totalIncome),
-                  sub: "Offering, tithes, seeds, and direct income",
-                  tone: "text-stone-900 dark:text-white",
-                },
-                {
-                  label: "Expenditure",
-                  value: formatCurrency(totalExpenditure),
-                  sub: "Finance unit spending entries",
-                  tone: "text-red-600 dark:text-red-400",
-                },
-                {
-                  label: "Net balance",
-                  value: formatCurrency(netBalance),
-                  sub: "Income after tracked expenditure",
-                  tone:
-                    netBalance < 0
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-stone-900 dark:text-white",
-                },
-              ].map((item) => (
-                <div key={item.label} className="bg-white px-5 py-4 dark:bg-neutral-900">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 dark:text-neutral-500">
-                    {item.label}
-                  </p>
-                  <p className={`mt-1 text-2xl font-semibold tracking-tight ${item.tone}`}>
-                    {item.value}
-                  </p>
-                  <p className="mt-1 text-xs text-stone-400 dark:text-neutral-500">
-                    {item.sub}
-                  </p>
-                </div>
-              ))}
             </div>
           </div>
 
@@ -288,10 +248,16 @@ export default function AdminDashboard() {
                 </thead>
 
                 <tbody className="divide-y divide-stone-50 dark:divide-neutral-800/60">
-                  {loading ? (
+                  {isDashboardLoading ? (
                     <tr>
                       <td colSpan={7} className="px-5 py-12 text-center text-sm text-stone-500 dark:text-neutral-400">
                         Loading reports...
+                      </td>
+                    </tr>
+                  ) : hasDashboardError ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-12 text-center text-sm text-red-600 dark:text-red-400">
+                        Could not load reports.
                       </td>
                     </tr>
                   ) : latestReports.length === 0 ? (

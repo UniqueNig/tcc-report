@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import AppProviders from "@/src/components/AppProviders";
 import "./globals.css";
 
@@ -26,37 +27,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const storedTheme = cookieStore.get("theme")?.value;
+  const htmlClassName =
+    storedTheme === "dark" ? "h-full antialiased dark" : "h-full antialiased";
+
   return (
-    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
-      <head>
-        {/*
-          This script runs BEFORE the page paints.
-          It reads localStorage and sets the dark class instantly —
-          no flash, no flicker, no hydration mismatch.
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var stored = localStorage.getItem('theme');
-                  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                  if (stored === 'dark' || (!stored && prefersDark)) {
-                    document.documentElement.classList.add('dark');
-                  } else {
-                    document.documentElement.classList.remove('dark');
-                  }
-                } catch(e) {}
-              })();
-            `,
-          }}
-        />
-      </head>
+    <html lang="en" className={htmlClassName} suppressHydrationWarning>
       <body className="min-h-full flex flex-col">
         <AppProviders>{children}</AppProviders>
       </body>

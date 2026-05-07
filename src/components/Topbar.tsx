@@ -47,6 +47,8 @@ interface TopbarProps {
 
 const READ_STORAGE_KEY = "tcc-report:read-notifications";
 const DISMISSED_STORAGE_KEY = "tcc-report:dismissed-notifications";
+const THEME_STORAGE_KEY = "theme";
+const STORAGE_SYNC_EVENT = "tcc-report:storage-sync";
 
 function getInitials(name: string) {
   return name
@@ -57,42 +59,19 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function subscribeTheme(onStoreChange: () => void) {
-  if (typeof window === "undefined" || typeof MutationObserver === "undefined") {
-    return () => {};
-  }
-
-  const observer = new MutationObserver(onStoreChange);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class"],
-  });
-
-  return () => observer.disconnect();
-}
-
-function getThemeSnapshot() {
-  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-}
-
-function getServerThemeSnapshot() {
-  return false;
-}
-
-function readStoredIds(key: string) {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const parsed = JSON.parse(localStorage.getItem(key) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
 function persistStoredIds(key: string, ids: string[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(key, JSON.stringify(ids.slice(-200)));
+  window.dispatchEvent(new Event(STORAGE_SYNC_EVENT));
+}
+
+function persistTheme(nextIsDark: boolean) {
+  if (typeof document === "undefined" || typeof localStorage === "undefined") return;
+
+  const theme = nextIsDark ? "dark" : "light";
+  document.documentElement.classList.toggle("dark", nextIsDark);
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+  document.cookie = `theme=${theme}; path=/; max-age=31536000; samesite=lax`;
 }
 
 function getReportHref(role: GraphQLUser["role"], reportId: string) {
@@ -122,6 +101,60 @@ function formatRelativeTime(iso: string) {
     day: "numeric",
     month: "short",
   });
+}
+
+function subscribeTheme(onStoreChange: () => void) {
+  if (typeof window === "undefined" || typeof MutationObserver === "undefined") {
+    return () => {};
+  }
+
+  const observer = new MutationObserver(onStoreChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+
+  return () => observer.disconnect();
+}
+
+function getThemeSnapshot() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
+
+function getServerThemeSnapshot() {
+  return false;
+}
+
+function subscribeStoredIds(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handle = () => onStoreChange();
+  window.addEventListener("storage", handle);
+  window.addEventListener(STORAGE_SYNC_EVENT, handle);
+
+  return () => {
+    window.removeEventListener("storage", handle);
+    window.removeEventListener(STORAGE_SYNC_EVENT, handle);
+  };
+}
+
+function getStoredIdsSnapshot(key: string) {
+  if (typeof window === "undefined") {
+    return "[]";
+  }
+
+  return localStorage.getItem(key) ?? "[]";
+}
+
+function parseStoredIdsSnapshot(snapshot: string) {
+  try {
+    const parsed = JSON.parse(snapshot);
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function buildNotifications(
@@ -211,30 +244,65 @@ function NotifIcon({ type }: { type: NotificationType }) {
 
 export default function Topbar({ onMenuClick, user }: TopbarProps) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const isDark = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getServerThemeSnapshot);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [readIds, setReadIds] = useState<string[]>(() => readStoredIds(READ_STORAGE_KEY));
-  const [dismissedIds, setDismissedIds] = useState<string[]>(() =>
-    readStoredIds(DISMISSED_STORAGE_KEY)
+  const readIdsSnapshot = useSyncExternalStore(
+    subscribeStoredIds,
+    () => getStoredIdsSnapshot(READ_STORAGE_KEY),
+    () => "[]"
   );
+  const dismissedIdsSnapshot = useSyncExternalStore(
+    subscribeStoredIds,
+    () => getStoredIdsSnapshot(DISMISSED_STORAGE_KEY),
+    () => "[]"
+  );
+  const [notifOpen, setNotifOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const { data, loading } = useQuery<{
     me: GraphQLUser | null;
     reports: GraphQLReport[];
   }>(TOPBAR_NOTIFICATIONS_QUERY, {
     fetchPolicy: "cache-and-network",
+    skip: !mounted,
   });
+  const notificationData = mounted ? data : undefined;
 
+  const readIds = useMemo(() => parseStoredIdsSnapshot(readIdsSnapshot), [readIdsSnapshot]);
+  const dismissedIds = useMemo(
+    () => parseStoredIdsSnapshot(dismissedIdsSnapshot),
+    [dismissedIdsSnapshot]
+  );
   const readIdSet = useMemo(() => new Set(readIds), [readIds]);
   const dismissedIdSet = useMemo(() => new Set(dismissedIds), [dismissedIds]);
   const notifications = useMemo(
-    () => buildNotifications(data?.me, data?.reports ?? [], readIdSet, dismissedIdSet),
-    [data?.me, data?.reports, dismissedIdSet, readIdSet]
+    () =>
+      buildNotifications(
+        notificationData?.me,
+        notificationData?.reports ?? [],
+        readIdSet,
+        dismissedIdSet
+      ),
+    [notificationData?.me, notificationData?.reports, dismissedIdSet, readIdSet]
   );
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === "dark" || storedTheme === "light") {
+      persistTheme(storedTheme === "dark");
+    } else {
+      persistTheme(root.classList.contains("dark"));
+    }
+  }, []);
 
   useEffect(() => {
     function handle(event: globalThis.MouseEvent) {
@@ -262,20 +330,16 @@ export default function Topbar({ onMenuClick, user }: TopbarProps) {
   }, []);
 
   function toggleTheme() {
-    const next = !isDark;
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
+    persistTheme(!isDark);
   }
 
   function storeReadIds(ids: string[]) {
     const next = Array.from(new Set(ids));
-    setReadIds(next);
     persistStoredIds(READ_STORAGE_KEY, next);
   }
 
   function storeDismissedIds(ids: string[]) {
     const next = Array.from(new Set(ids));
-    setDismissedIds(next);
     persistStoredIds(DISMISSED_STORAGE_KEY, next);
   }
 
